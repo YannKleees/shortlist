@@ -1,0 +1,28 @@
+# Personal data: never commit
+my-jobs*.json
+shortlist-export-*.json
+exports/
+ranked*.json
+cv.md
+cv.txt
+postings.json
+.env
+
+# Database
+*.db
+*.db-*
+
+# MLflow
+mlflow.db
+mlruns/
+mlartifacts/
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# Node and OS
+node_modules/
+.DS_Store

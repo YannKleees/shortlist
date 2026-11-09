@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shortlist</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='6' fill='%231d4ed8'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script>
+    tailwind.config = { theme: { extend: { fontFamily: {
+      sans: ["Geist", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+      mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+    } } } };
+  </script>
+  <style>
+    :root {
+      --bg: #f7f7f5; --surface: #ffffff; --subtle: #f0f0ec; --border: #e3e3de; --strong: #cfcfc8;
+      --text: #1b1b18; --muted: #6b6b65; --accent: #1d4ed8; --accent-fg: #ffffff;
+      --good: #15803d; --warn: #a16207; --bad: #be123c;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+      --bg: #111110; --surface: #191918; --subtle: #21211f; --border: #2c2c29; --strong: #3d3d39;
+      --text: #ededea; --muted: #9a9a93; --accent: #8aa9ff; --accent-fg: #0d0d0c;
+      --good: #4ade80; --warn: #facc15; --bad: #fb7185;
+      color-scheme: dark;
+    } }
+    :root[data-theme="dark"] {
+      --bg: #111110; --surface: #191918; --subtle: #21211f; --border: #2c2c29; --strong: #3d3d39;
+      --text: #ededea; --muted: #9a9a93; --accent: #8aa9ff; --accent-fg: #0d0d0c;
+      --good: #4ade80; --warn: #facc15; --bad: #fb7185;
+      color-scheme: dark;
+    }
+    html, body { background: var(--bg); color: var(--text); }
+    body { font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .muted { color: var(--muted); }
+    .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); } .accent { color: var(--accent); }
+    .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .8125rem; }
+    .eyebrow { font-size: .72rem; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; height: 2.25rem; padding: 0 .85rem;
+      border-radius: .5rem; font-size: .875rem; font-weight: 500; white-space: nowrap; border: 1px solid transparent; transition: background .12s, border-color .12s; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: var(--accent-fg); }
+    .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+    .btn-secondary { background: var(--surface); border-color: var(--border); }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--strong); }
+    .btn-quiet { color: var(--muted); }
+    .btn-quiet:hover:not(:disabled) { background: var(--subtle); color: var(--text); }
+    .btn-sm { height: 1.875rem; padding: 0 .6rem; font-size: .8125rem; }
+    .btn-danger { color: var(--bad); }
+
+    .field { width: 100%; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
+      padding: .45rem .7rem; font-size: .9375rem; color: var(--text); }
+    .field::placeholder, .inline::placeholder { color: var(--muted); opacity: .8; }
+    .field:hover { border-color: var(--strong); }
+    .field:focus { border-color: var(--accent); outline: none; }
+    select.field { padding-right: 2rem; }
+    .label { display: grid; gap: .3rem; font-size: .8125rem; font-weight: 500; color: var(--muted); }
+
+    /* Text that is editable in place: looks like plain text until hovered or focused. */
+    .inline { width: 100%; min-width: 0; background: transparent; border: 1px solid transparent; border-radius: .375rem;
+      padding: .25rem .4rem; margin: 0 -.4rem; color: var(--text); resize: none; }
+    textarea.inline { min-height: 2.2rem; field-sizing: content; }
+    .inline:hover { background: var(--subtle); }
+    .inline:focus { background: var(--surface); border-color: var(--accent); outline: none; }
+    input[type=date] { min-width: 0; }
+
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; }
+    .rows > * + * { border-top: 1px solid var(--border); }
+    .row { cursor: pointer; transition: background .12s; }
+    .row:hover { background: var(--subtle); }
+
+    .tab { position: relative; padding: .5rem 0; font-size: .9rem; font-weight: 500; color: var(--muted); }
+    .tab:hover { color: var(--text); }
+    .tab[aria-selected="true"] { color: var(--text); }
+    .tab[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--text); border-radius: 2px; }
+
+    dialog { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: .75rem; padding: 0;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, .14); }
+    dialog::backdrop { background: rgba(10, 10, 9, .32); }
+    dialog.sheet { margin: 0 0 0 auto; width: min(40rem, 100%); max-width: 100%; height: 100dvh; max-height: 100dvh;
+      border-radius: 0; border-width: 0 0 0 1px; }
+    dialog.sheet[open] { animation: slide .18s ease-out; }
+    @keyframes slide { from { transform: translateX(2rem); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+    /* A popover sits in the top layer, so the toast stays visible above open dialogs. */
+    #toast { position: fixed; inset: auto auto 1.5rem 50%; transform: translateX(-50%); margin: 0; border: 0;
+      border-radius: .5rem; padding: .5rem 1rem; font-size: .875rem; background: var(--text); color: var(--bg); }
+    section.block + section.block { border-top: 1px solid var(--border); }
+    section.block > * { min-width: 0; }
+  </style>
+</head>
+<body class="font-sans">
+  <header class="border-b" style="border-color: var(--border)">
+    <div class="mx-auto max-w-4xl px-4 sm:px-6 h-16 flex items-center gap-3">
+      <h1 class="text-[17px] font-semibold tracking-tight mr-auto">Shortlist</h1>
+      <input id="search" type="search" placeholder="Search" aria-label="Search jobs" class="field !h-9 !py-0 !w-44 sm:!w-60 hidden sm:block">
+      <button id="settings-btn" type="button" class="btn btn-quiet">Settings</button>
+      <button id="add-btn" type="button" class="btn btn-primary">Add job</button>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-4xl px-4 sm:px-6 pt-6 pb-20">
+    <div class="flex items-end justify-between gap-4 border-b" style="border-color: var(--border)">
+      <div role="tablist" aria-label="Jobs" class="flex gap-6">
+        <button type="button" role="tab" class="tab" data-group="active">To apply <span class="muted tabular-nums" data-count="active"></span></button>
+        <button type="button" role="tab" class="tab" data-group="progress">Applied <span class="muted tabular-nums" data-count="progress"></span></button>
+        <button type="button" role="tab" class="tab" data-group="done">Closed <span class="muted tabular-nums" data-count="done"></span></button>
+      </div>
+      <p id="due-note" class="pb-2 text-sm bad" hidden></p>
+    </div>
+    <input id="search-mobile" type="search" placeholder="Search" aria-label="Search jobs" class="field mt-4 sm:hidden">
+
+    <p id="cv-note" class="mt-4 text-sm muted" hidden>Add your CV so pros and cons and letters fit your profile.
+      <label class="cursor-pointer underline underline-offset-2 accent">Upload CV<input type="file" accept=".pdf,.docx,.txt,.md" class="sr-only" data-cv-input></label></p>
+
+    <div id="list" class="mt-4 panel rows overflow-hidden" aria-live="polite">
+      <p class="p-6 muted">Loading.</p>
+    </div>
+  </main>
+
+  <!-- Add a job -->
+  <dialog id="add-dialog" class="w-[min(34rem,calc(100%-2rem))]">
+    <form id="link-form" class="p-5 sm:p-6 grid gap-4">
+      <div>
+        <h2 class="text-base font-semibold">Add a job</h2>
+        <p class="text-sm muted">Paste the link from LinkedIn, Indeed or a careers page.</p>
+      </div>
+      <input name="url" type="url" required placeholder="https://" aria-label="Job link" class="field">
+      <details class="text-sm">
+        <summary class="cursor-pointer muted">The page needs a login? Paste the text instead</summary>
+        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <label class="label">Company<input name="company" class="field"></label>
+          <label class="label">Role<input name="role" class="field"></label>
+          <label class="label sm:col-span-2">Job description<textarea name="text" rows="5" class="field"></textarea></label>
+        </div>
+      </details>
+      <p class="text-sm bad" data-error role="alert"></p>
+      <div class="flex items-center justify-between gap-2">
+        <button type="button" id="manual-btn" class="btn btn-quiet -ml-3">Enter by hand</button>
+        <div class="flex gap-2">
+          <button type="button" data-close class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Basics: add by hand or edit -->
+  <dialog id="job-dialog" class="w-[min(34rem,calc(100%-2rem))]">
+    <form id="job-form" class="p-5 sm:p-6 grid gap-4">
+      <h2 id="job-title" class="text-base font-semibold">Edit job</h2>
+      <input type="hidden" name="id">
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="label">Company<input name="company" required class="field"></label>
+        <label class="label">Role<input name="role" class="field"></label>
+        <label class="label sm:col-span-2">Link<input name="link" type="url" placeholder="https://" class="field"></label>
+        <label class="label">Location<input name="location" class="field"></label>
+        <label class="label">Work setup<select name="workSetup" class="field"></select></label>
+        <label class="label">Found on<input name="source" class="field" placeholder="LinkedIn"></label>
+        <label class="label">Deadline<input name="deadline" type="date" class="field"></label>
+      </div>
+      <p class="text-sm bad" data-error role="alert"></p>
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <button type="button" id="delete-btn" class="btn btn-quiet btn-danger -ml-3">Delete</button>
+          <span id="delete-confirm" hidden class="text-sm">Delete for good?
+            <button type="button" id="delete-yes" class="btn btn-sm btn-quiet btn-danger">Delete</button>
+            <button type="button" id="delete-no" class="btn btn-sm btn-quiet">Keep</button></span>
+        </div>
+        <div class="flex gap-2">
+          <button type="button" data-close class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- One job -->
+  <dialog id="detail-dialog" class="sheet" aria-labelledby="d-company">
+    <div class="sticky top-0 z-10 flex items-center gap-2 px-5 sm:px-7 h-14 border-b" style="background: var(--surface); border-color: var(--border)">
+      <button type="button" data-close class="btn btn-quiet -ml-3">Close</button>
+      <span class="mr-auto"></span>
+      <button type="button" id="d-edit" class="btn btn-quiet">Edit</button>
+      <a id="d-link" target="_blank" rel="noopener" class="btn btn-secondary">Open posting</a>
+    </div>
+
+    <div class="px-5 sm:px-7">
+      <section class="block py-6">
+        <p id="d-company" class="text-xl font-semibold tracking-tight"></p>
+        <p id="d-role"></p>
+        <p id="d-meta" class="mt-1 text-sm muted"></p>
+        <label class="mt-4 inline-flex items-center gap-2 text-sm"><span class="muted">Status</span>
+          <select id="d-status" class="field !w-auto !h-8 !py-0"></select></label>
+      </section>
+
+      <section class="block py-6 grid gap-3">
+        <h2 class="eyebrow">Application</h2>
+        <dl class="grid grid-cols-[8.5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-1.5 text-sm">
+          <dt class="muted">CV sent</dt><dd><input type="checkbox" id="d-cv" class="h-4 w-4 align-middle" style="accent-color: var(--accent)"></dd>
+          <dt class="muted">Applied on</dt><dd><input type="date" data-field="appliedOn" class="inline !w-auto"></dd>
+          <dt class="muted">They replied on</dt><dd><input type="date" data-field="repliedOn" class="inline !w-auto"></dd>
+          <dt class="muted">Follow up on</dt><dd class="flex items-center gap-2"><input type="date" data-field="followUp" class="inline !w-auto"><span id="d-due" class="text-xs bad" hidden>Due</span></dd>
+          <dt class="muted">Deadline</dt><dd><input type="date" data-field="deadline" class="inline !w-auto"></dd>
+          <dt class="muted">Next step</dt><dd><textarea data-field="nextStep" class="inline" rows="1" placeholder="Add a next step"></textarea></dd>
+        </dl>
+      </section>
+
+      <section class="block py-6 grid gap-5">
+        <div class="grid gap-1">
+          <h2 class="eyebrow">The job</h2>
+          <textarea data-field="summary" class="inline leading-relaxed" placeholder="What the role is about"></textarea>
+        </div>
+        <div class="grid gap-1">
+          <h2 class="eyebrow">The company</h2>
+          <textarea data-field="companyAbout" class="inline leading-relaxed" placeholder="What the company does"></textarea>
+        </div>
+        <div class="grid gap-5 sm:grid-cols-2">
+          <div class="grid gap-1 content-start">
+            <h2 class="eyebrow"><span class="good">Pros</span></h2>
+            <textarea data-field="pros" class="inline text-sm leading-relaxed" placeholder="What speaks for it"></textarea>
+          </div>
+          <div class="grid gap-1 content-start">
+            <h2 class="eyebrow"><span class="bad">Cons</span></h2>
+            <textarea data-field="cons" class="inline text-sm leading-relaxed" placeholder="What speaks against it"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="block py-6 grid gap-3">
+        <div class="flex items-center justify-between">
+          <h2 class="eyebrow">People</h2>
+          <button type="button" id="d-add-person" class="btn btn-sm btn-quiet -mr-2">Add person</button>
+        </div>
+        <form id="person-form" hidden class="grid gap-2 sm:grid-cols-2 p-3 rounded-lg" style="background: var(--subtle)">
+          <input type="hidden" name="id">
+          <input name="name" placeholder="Name" class="field" required>
+          <select name="relation" class="field" aria-label="Relation"></select>
+          <input name="role" placeholder="Their role" class="field">
+          <input name="lastContact" type="date" class="field" aria-label="Last contact">
+          <input name="email" type="email" placeholder="Email" class="field">
+          <input name="linkedin" type="url" placeholder="LinkedIn profile" class="field">
+          <input name="notes" placeholder="Notes" class="field sm:col-span-2">
+          <div class="sm:col-span-2 flex justify-end gap-2">
+            <button type="button" id="person-cancel" class="btn btn-sm btn-quiet">Cancel</button>
+            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+          </div>
+        </form>
+        <ul id="d-people" class="grid gap-3"></ul>
+      </section>
+
+      <section class="block py-6 grid gap-3">
+        <h2 class="eyebrow">Timeline</h2>
+        <form id="event-form" class="grid grid-cols-2 sm:grid-cols-[9rem_9.5rem_1fr_auto] gap-2">
+          <select name="kind" class="field" aria-label="What happened"></select>
+          <input name="date" type="date" class="field" aria-label="Date">
+          <input name="text" placeholder="Details" class="field col-span-2 sm:col-span-1">
+          <button type="submit" class="btn btn-secondary col-span-2 sm:col-span-1">Add</button>
+        </form>
+        <ol id="d-events" class="grid gap-2 text-sm"></ol>
+      </section>
+
+      <section class="block py-6 grid gap-1">
+        <h2 class="eyebrow">Notes</h2>
+        <textarea data-field="notes" class="inline text-sm leading-relaxed" placeholder="Anything worth remembering"></textarea>
+      </section>
+
+      <section class="block py-6 flex items-center justify-between gap-3">
+        <div>
+          <h2 class="eyebrow">Motivation letter</h2>
+          <p id="d-letter-info" class="text-sm muted"></p>
+        </div>
+        <button type="button" id="d-letter" class="btn btn-secondary">Open</button>
+      </section>
+    </div>
+  </dialog>
+
+  <!-- Letter editor -->
+  <dialog id="letter-dialog" class="w-[min(52rem,calc(100%-2rem))]">
+    <div class="p-5 sm:p-6 grid gap-4">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-base font-semibold">Motivation letter</h2>
+          <p id="letter-job" class="text-sm muted"></p>
+        </div>
+        <button type="button" data-close class="btn btn-quiet -mr-3">Close</button>
+      </div>
+      <div class="grid gap-2 sm:grid-cols-[9rem_1fr_auto] items-end">
+        <label class="label">Language
+          <select id="letter-lang" class="field"><option>English</option><option>French</option><option>German</option><option>Dutch</option></select></label>
+        <label class="label">Instructions
+          <input id="letter-notes" class="field" placeholder="Optional, for example: mention my NLP thesis"></label>
+        <button id="letter-generate" type="button" class="btn btn-primary">Write draft</button>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <select id="letter-version" class="field !w-auto !h-8 !py-0 text-sm" aria-label="Version"></select>
+        <span id="letter-state" class="text-sm muted" role="status"></span>
+      </div>
+      <textarea id="letter-text" rows="15" class="field leading-relaxed" placeholder="Write a draft with your local model, then edit it here."></textarea>
+      <div class="flex flex-wrap items-center gap-1" id="revise-bar">
+        <span class="text-sm muted mr-1">Revise</span>
+        <button type="button" class="btn btn-sm btn-quiet" data-revise="Make it about 30 percent shorter. Keep the strongest points.">Shorter</button>
+        <button type="button" class="btn btn-sm btn-quiet" data-revise="Make the tone more formal and professional.">More formal</button>
+        <button type="button" class="btn btn-sm btn-quiet" data-revise="Make it more personal and specific to this company, using details from the posting.">More personal</button>
+        <button type="button" class="btn btn-sm btn-quiet" data-revise="Fix grammar, spelling and awkward phrasing only. Change nothing else.">Fix grammar</button>
+        <input id="revise-custom" class="field !h-8 !py-0 flex-1 min-w-[12rem] text-sm" placeholder="Or describe a change and press Enter">
+      </div>
+      <div class="flex flex-wrap justify-end gap-2">
+        <button id="letter-copy" type="button" class="btn btn-quiet">Copy</button>
+        <a id="letter-txt" class="btn btn-quiet" href="#">TXT</a>
+        <a id="letter-docx" class="btn btn-secondary" href="#">Download Word</a>
+        <button id="letter-save" type="button" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Settings: CV, model, data -->
+  <dialog id="settings-dialog" class="w-[min(30rem,calc(100%-2rem))]">
+    <div class="p-5 sm:p-6 grid gap-6">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-semibold">Settings</h2>
+        <button type="button" data-close class="btn btn-quiet -mr-3">Close</button>
+      </div>
+      <section class="grid gap-2">
+        <h3 class="eyebrow">CV</h3>
+        <div class="flex items-center justify-between gap-3">
+          <p id="cv-state" class="text-sm"></p>
+          <label class="btn btn-secondary cursor-pointer">Upload<input type="file" accept=".pdf,.docx,.txt,.md" class="sr-only" data-cv-input></label>
+        </div>
+      </section>
+      <form id="settings-form" class="grid gap-3">
+        <h3 class="eyebrow">Letters</h3>
+        <p class="text-sm muted">Written by Ollama on your machine. Install it from ollama.com and run <code class="mono">ollama pull llama3.1:8b</code>.</p>
+        <label class="label">Model<input name="llm_model" class="field" list="model-list"><datalist id="model-list"></datalist></label>
+        <label class="label">Ollama address<input name="llm_url" class="field"></label>
+        <div class="flex items-center justify-between gap-3">
+          <p id="settings-state" class="text-sm" role="status"></p>
+          <button type="submit" class="btn btn-secondary">Save</button>
+        </div>
+      </form>
+      <section class="grid gap-2">
+        <h3 class="eyebrow">Data</h3>
+        <p class="text-sm muted">Everything lives in <code class="mono">shortlist.db</code>. Export it as JSON to move it to another computer.</p>
+        <div class="flex flex-wrap items-center gap-2">
+          <a id="export-btn" href="/api/export" download="shortlist-export.json" class="btn btn-secondary">Export</a>
+          <label class="btn btn-secondary cursor-pointer">Import<input id="json-input" type="file" accept=".json,application/json" class="sr-only"></label>
+          <span id="import-state" class="text-sm" role="status"></span>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
+  <div id="toast" role="status" popover="manual"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

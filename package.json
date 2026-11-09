@@ -1,0 +1,11 @@
+{
+  "name": "shortlist",
+  "version": "1.0.0",
+  "description": "Web front end tests for Shortlist.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test web/tests/*.test.js"
+  },
+  "license": "MIT"
+}

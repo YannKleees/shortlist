@@ -1,0 +1,83 @@
+{
+  "note": "Fictional example jobs for trying out Shortlist. None of these companies exist.",
+  "jobs": [
+    {
+      "id": "example-northwind-ds-intern",
+      "company": "Northwind Analytics (example)",
+      "role": "Data Science Intern, NLP",
+      "location": "Luxembourg City",
+      "workSetup": "Hybrid",
+      "type": "Internship",
+      "status": "To apply",
+      "fit": "Top pick",
+      "score": 86,
+      "pros": "Hands on NLP and classification work. Internship, no experience needed. Two home office days a week.",
+      "cons": "Six month commitment from February.",
+      "nextStep": "Lead with an NLP project and mention Python and scikit learn.",
+      "link": "https://example.com/jobs/northwind-ds-intern",
+      "deadline": "2026-12-15",
+      "addedBy": "pipeline"
+    },
+    {
+      "id": "example-contoso-junior-ds",
+      "company": "Contoso Bank (example)",
+      "role": "Junior Data Scientist",
+      "location": "Kirchberg, Luxembourg",
+      "workSetup": "Hybrid",
+      "type": "Job",
+      "status": "To apply",
+      "fit": "Good",
+      "score": 74,
+      "pros": "Junior role with a mentoring programme. Credit risk modelling in Python.",
+      "cons": "Asks for one year of experience. French is preferred.",
+      "link": "https://example.com/jobs/contoso-junior-ds",
+      "addedBy": "you"
+    },
+    {
+      "id": "example-fabrikam-bi-intern",
+      "company": "Fabrikam Logistics (example)",
+      "role": "BI and Reporting Intern",
+      "location": "Bettembourg, Luxembourg",
+      "workSetup": "On site",
+      "type": "Internship",
+      "status": "To apply",
+      "fit": "Maybe",
+      "score": 52,
+      "pros": "Internship level. SQL every day.",
+      "cons": "Mostly Power BI dashboards. Fully on site.",
+      "link": "https://example.com/jobs/fabrikam-bi-intern",
+      "addedBy": "pipeline"
+    },
+    {
+      "id": "example-tailspin-ml-student",
+      "company": "Tailspin Labs (example)",
+      "role": "Working Student, Machine Learning",
+      "location": "Utrecht, Netherlands",
+      "workSetup": "Hybrid",
+      "type": "Working student",
+      "status": "Applied",
+      "fit": "Good",
+      "score": 71,
+      "pros": "Part time next to studies. PyTorch model training.",
+      "cons": "16 hours a week minimum.",
+      "appliedOn": "2026-11-02",
+      "followUp": "2026-11-12",
+      "link": "https://example.com/jobs/tailspin-ml-student",
+      "addedBy": "you"
+    },
+    {
+      "id": "example-woodgrove-senior-ds",
+      "company": "Woodgrove Insurance (example)",
+      "role": "Senior Data Scientist",
+      "location": "Luxembourg City",
+      "workSetup": "Hybrid",
+      "type": "Job",
+      "status": "Not interested",
+      "fit": "Stretch",
+      "score": 18,
+      "cons": "Requires five years of experience.",
+      "link": "https://example.com/jobs/woodgrove-senior-ds",
+      "addedBy": "pipeline"
+    }
+  ]
+}

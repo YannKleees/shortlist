@@ -1,0 +1,49 @@
+# docker compose up -d     then open http://localhost:8000
+# The first start downloads the letter model (about 5 GB) in the background.
+
+services:
+  shortlist:
+    build: .
+    image: shortlist:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"     # reachable from this computer only
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - shortlist-data:/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Runs once: downloads the model into the shared volume, then exits.
+  ollama-pull:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-llama3.1:8b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  shortlist-data:
+  ollama-models:
