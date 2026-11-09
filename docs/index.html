@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Send a job</title>
+  <meta name="description" content="Send a job link to someone who is looking for work.">
+  <meta name="robots" content="noindex">
+  <link rel="manifest" href="manifest.webmanifest" id="manifest">
+  <meta name="theme-color" content="#1d4ed8">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Send a job">
+  <style>
+    :root {
+      --bg: #f7f7f5; --surface: #ffffff; --border: #dcdcd6; --text: #1b1b18; --muted: #5f5f59;
+      --accent: #1d4ed8; --accent-fg: #ffffff; --good: #15803d; --bad: #be123c;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+      --bg: #111110; --surface: #1b1b19; --border: #34342f; --text: #f0f0ec; --muted: #a8a8a0;
+      --accent: #8aa9ff; --accent-fg: #0d0d0c; --good: #4ade80; --bad: #fb7185;
+      color-scheme: dark;
+    } }
+    :root[data-theme="dark"] {
+      --bg: #111110; --surface: #1b1b19; --border: #34342f; --text: #f0f0ec; --muted: #a8a8a0;
+      --accent: #8aa9ff; --accent-fg: #0d0d0c; --good: #4ade80; --bad: #fb7185;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); }
+    body { font: 18px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased;
+      padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+    main { max-width: 32rem; margin: 0 auto; display: grid; gap: 1.25rem; }
+    [hidden] { display: none !important; }
+    h1 { font-size: 1.6rem; line-height: 1.2; margin: .5rem 0 0; letter-spacing: -.01em; }
+    p { margin: 0; }
+    .muted { color: var(--muted); }
+    label { display: grid; gap: .4rem; font-weight: 600; }
+    textarea, input { width: 100%; font: inherit; color: var(--text); background: var(--surface); border: 2px solid var(--border);
+      border-radius: 14px; padding: .8rem .9rem; }
+    textarea { min-height: 7.5rem; resize: vertical; }
+    textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+    button, .button { display: flex; align-items: center; justify-content: center; gap: .5rem; width: 100%; min-height: 3.5rem;
+      font: inherit; font-weight: 600; border-radius: 14px; border: 2px solid transparent; cursor: pointer; text-decoration: none; }
+    .primary { background: var(--accent); color: var(--accent-fg); font-size: 1.15rem; }
+    .secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: .5rem; align-items: end; }
+    .row button { width: auto; min-height: 2.75rem; padding: 0 1rem; }
+    .error { color: var(--bad); font-weight: 600; }
+    .card { background: var(--surface); border: 2px solid var(--border); border-radius: 16px; padding: 1.1rem; display: grid; gap: .6rem; }
+    .done { font-size: 3rem; line-height: 1; color: var(--good); }
+    .tip { font-size: .95rem; }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1 data-t="title"></h1>
+      <p class="muted" data-t="hint"></p>
+    </header>
+
+    <section id="setup" class="card" hidden>
+      <p data-t="noSetup"></p>
+    </section>
+
+    <form id="form" hidden>
+      <div style="display:grid; gap:1.1rem">
+        <div class="row">
+          <label for="link" data-t="linkLabel"></label>
+          <button type="button" id="paste" class="secondary" data-t="paste" hidden></button>
+        </div>
+        <textarea id="link" name="link" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+        <label><span data-t="noteLabel"></span>
+          <input id="note" name="note" autocomplete="off" data-ph="notePh"></label>
+        <p id="error" class="error" role="alert"></p>
+        <button type="submit" class="primary" data-t="send"></button>
+        <p class="muted tip" id="to-line"></p>
+      </div>
+    </form>
+
+    <section id="sent" class="card" hidden>
+      <p class="done" aria-hidden="true">✓</p>
+      <p style="font-weight:600; font-size:1.2rem" data-t="sentTitle"></p>
+      <p data-t="sentText"></p>
+      <button type="button" id="again" class="secondary" data-t="again"></button>
+    </section>
+
+    <p class="muted tip" id="install" data-t="install"></p>
+  </main>
+
+  <script>
+    const T = {
+      en: {
+        title: "Send a job to {for}", hint: "Paste the job link, or share it here from the Indeed or LinkedIn app.",
+        linkLabel: "Job link", paste: "Paste", noteLabel: "Message (optional)", notePh: "Why this one?", send: "Send",
+        sentTitle: "Almost done", sentText: "Your mail app opened. Tap Send there.", again: "Send another job",
+        noSetup: "This page needs your personal link. Ask {for} to send it to you again.", noLink: "Paste a link first.",
+        toLine: "It goes by email to {to}.",
+        install: "Tip: add this page to your home screen. iPhone: Share, then Add to Home Screen. Android: menu ⋮, then Add to Home screen.",
+      },
+      de: {
+        title: "Job an {for} schicken", hint: "Füge den Link zur Stelle ein, oder teile ihn aus der Indeed- oder LinkedIn-App hierher.",
+        linkLabel: "Link zur Stelle", paste: "Einfügen", noteLabel: "Nachricht (freiwillig)", notePh: "Warum diese Stelle?", send: "Senden",
+        sentTitle: "Fast fertig", sentText: "Deine Mail-App ist offen. Tippe dort auf Senden.", again: "Noch einen Job schicken",
+        noSetup: "Diese Seite braucht deinen persönlichen Link. Bitte {for}, ihn dir noch einmal zu schicken.", noLink: "Füge zuerst einen Link ein.",
+        toLine: "Er geht per E-Mail an {to}.",
+        install: "Tipp: Leg diese Seite auf den Startbildschirm. iPhone: Teilen, dann „Zum Home-Bildschirm“. Android: Menü ⋮, dann „Zum Startbildschirm hinzufügen“.",
+      },
+      fr: {
+        title: "Envoyer une offre à {for}", hint: "Colle le lien de l’offre, ou partage-le ici depuis l’app Indeed ou LinkedIn.",
+        linkLabel: "Lien de l’offre", paste: "Coller", noteLabel: "Message (facultatif)", notePh: "Pourquoi celle-ci ?", send: "Envoyer",
+        sentTitle: "Presque fini", sentText: "Ton app mail s’est ouverte. Appuie sur Envoyer.", again: "Envoyer une autre offre",
+        noSetup: "Cette page a besoin de ton lien personnel. Demande à {for} de te le renvoyer.", noLink: "Colle d’abord un lien.",
+        toLine: "Elle part par e-mail à {to}.",
+        install: "Astuce : ajoute cette page à l’écran d’accueil. iPhone : Partager, puis « Sur l’écran d’accueil ». Android : menu ⋮, puis « Ajouter à l’écran d’accueil ».",
+      },
+    };
+    const lang = (navigator.languages || [navigator.language || "en"]).map(l => l.slice(0, 2).toLowerCase()).find(l => T[l]) || "en";
+    document.documentElement.lang = lang;
+
+    const store = {
+      get(k) { try { return localStorage.getItem("shortlist." + k) || ""; } catch { return ""; } },
+      set(k, v) { try { localStorage.setItem("shortlist." + k, v); } catch {} },
+    };
+    const q = new URLSearchParams(location.search + "&" + location.hash.slice(1));
+    for (const k of ["to", "name", "for"]) if (q.get(k)) store.set(k, q.get(k));
+    const cfg = { to: store.get("to"), name: store.get("name") || "", for: store.get("for") || "" };
+
+    const fill = s => s.replaceAll("{for}", cfg.for || (lang === "de" ? "ihn" : lang === "fr" ? "lui" : "them")).replaceAll("{to}", cfg.to);
+    const t = k => fill(T[lang][k]);
+    document.querySelectorAll("[data-t]").forEach(el => (el.textContent = t(el.dataset.t)));
+    document.querySelectorAll("[data-ph]").forEach(el => (el.placeholder = t(el.dataset.ph)));
+    if (!cfg.for) document.querySelector("h1").textContent = { en: "Send a job", de: "Job schicken", fr: "Envoyer une offre" }[lang];
+    document.title = document.querySelector("h1").textContent;
+
+    const $ = id => document.getElementById(id);
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+    // On iPhone the home screen copy keeps its own storage, so it must start from this exact link.
+    if (ios) $("manifest").remove();
+    if (standalone) $("install").hidden = true;
+
+    if (!cfg.to) {
+      $("setup").hidden = false;
+    } else {
+      $("form").hidden = false;
+      $("to-line").textContent = t("toLine");
+      // Shared from another app (Android): ?title=...&text=...&url=...
+      const shared = [q.get("title"), q.get("text"), q.get("url")].filter(Boolean);
+      if (shared.length) $("link").value = [...new Set(shared)].join("\n");
+      if (navigator.clipboard && navigator.clipboard.readText) $("paste").hidden = false;
+    }
+
+    $("paste").addEventListener("click", async () => {
+      try { $("link").value = (await navigator.clipboard.readText()).trim(); $("error").textContent = ""; } catch { $("link").focus(); }
+    });
+
+    $("form").addEventListener("submit", e => {
+      e.preventDefault();
+      const raw = $("link").value.trim();
+      const link = (raw.match(/https?:\/\/[^\s<>"')\]]+/i) || [""])[0];
+      if (!link) { $("error").textContent = t("noLink"); $("link").focus(); return; }
+      const title = raw.split(/\r?\n/).map(s => s.replace(/https?:\/\/\S+/gi, "").trim()).find(Boolean) || "Job";
+      const subject = `[Shortlist] ${cfg.name || "Helper"}: ${title.slice(0, 90)}`;
+      const note = $("note").value.trim();
+      const body = [link, note, "Sent with Shortlist"].filter(Boolean).join("\r\n\r\n");
+      location.href = `mailto:${encodeURIComponent(cfg.to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      $("form").hidden = true; $("sent").hidden = false;
+    });
+
+    $("again").addEventListener("click", () => {
+      $("form").reset(); $("error").textContent = "";
+      $("sent").hidden = true; $("form").hidden = false; $("link").focus();
+    });
+
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  </script>
+</body>
+</html>

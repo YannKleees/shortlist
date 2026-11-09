@@ -195,9 +195,25 @@ def test_api_pasted_text_needs_no_fetch(tmp_path):
         raise RuntimeError("login wall")
     c = TestClient(create_app(tmp_path / "p.db", fetch=fetch, wiki_get=None))
     url = "https://www.linkedin.com/jobs/view/4055555555/"
-    assert c.post("/api/jobs/import-link", json={"url": url}).status_code == 422
-    r = c.post("/api/jobs/import-link", json={"url": url, "company": "Acme", "role": "NLP Intern", "text": "NLP internship, hybrid, Python."})
-    assert r.status_code == 200 and r.json()["summary"].startswith("NLP internship")
+    r = c.post("/api/jobs/import-link", json={"url": url, "company": "Acme", "role": "NLP Intern", "text": "NLP internship, hybrid, Python. " * 12})
+    assert r.status_code == 200 and r.json()["summary"].startswith("NLP internship") and r.json()["hasText"]
+
+
+def test_api_unreadable_link_is_saved_and_text_can_follow(tmp_path):
+    def fetch(url):
+        raise RuntimeError("403 blocked")
+    c = TestClient(create_app(tmp_path / "p.db", fetch=fetch, wiki_get=None, geo_get=None))
+    shared = "Data Analyst - Contoso Bank - Luxembourg\nhttps://lu.indeed.com/m/viewjob?jk=abc123&from=share"
+    j = c.post("/api/jobs/import-link", json={"url": shared, "addedBy": "Mama", "note": "Looks good"}).json()
+    assert (j["company"], j["role"], j["location"], j["addedBy"], j["hasText"]) == ("Contoso Bank", "Data Analyst", "Luxembourg", "Mama", False)
+    assert j["link"] == "https://lu.indeed.com/viewjob?jk=abc123"
+    assert c.get(f"/api/jobs/{j['id']}").json()["events"][0]["text"] == "Mama: Looks good"
+    assert c.post("/api/jobs/import-link", json={"url": "https://lu.indeed.com/viewjob?jk=abc123"}).json()["id"] == j["id"]
+
+    assert c.post(f"/api/jobs/{j['id']}/text", json={"text": "too short"}).status_code == 422
+    text = "Junior Data Analyst. You build Power BI reports and SQL models. Hybrid, two days at home. Salary: EUR 3,200 per month. " * 2
+    j = c.post(f"/api/jobs/{j['id']}/text", json={"text": text}).json()
+    assert j["hasText"] and j["workSetup"] == "Hybrid" and j["salary"] == "EUR 3,200 per month" and j["reasons"]
 
 
 def test_api_application_tracking(client):
@@ -260,3 +276,70 @@ def test_env_file_fills_missing_variables(tmp_path, monkeypatch):
     monkeypatch.delenv("SHORTLIST_TEST_B", raising=False)
     load_env(tmp_path / ".env")
     assert os.environ["SHORTLIST_TEST_A"] == "already_set" and os.environ["SHORTLIST_TEST_B"] == "quoted"
+
+
+def test_letters_drop_model_thinking():
+    assert letters.clean_reply("<think>plan the letter</think>\n\nDear team,") == "Dear team,"
+    assert letters.clean_reply("plan without opening tag</think>Dear team,") == "Dear team,"
+    assert letters.clean_reply("Dear team,\nBody.") == "Dear team,\nBody."
+
+
+def test_api_follow_up_moves_after_you_write_again(client):
+    jid = client.post("/api/jobs", json={"company": "Acme", "role": "DS Intern"}).json()["id"]
+    client.patch(f"/api/jobs/{jid}", json={"status": "Applied", "appliedOn": "2026-10-01", "followUp": "2026-10-11"})
+    client.post(f"/api/jobs/{jid}/events", json={"kind": "Email sent", "text": "Follow up", "date": "2026-10-12"})
+    assert client.get(f"/api/jobs/{jid}").json()["followUp"] == "2026-10-19"
+    client.post(f"/api/jobs/{jid}/events", json={"kind": "Note", "text": "x", "date": "2026-10-20"})
+    assert client.get(f"/api/jobs/{jid}").json()["followUp"] == "2026-10-19"
+
+
+def test_api_new_cv_rescores_jobs_but_keeps_edits(client):
+    jid = client.post("/api/jobs", json={"company": "Acme", "role": "NLP Intern", "pros": "My own note."}).json()["id"]
+    r = client.post("/api/cv", files={"file": ("cv.txt", b"MSc data science. Python, NLP, scikit-learn.", "text/plain")}).json()
+    assert r["rescored"] == 1
+    j = client.get(f"/api/jobs/{jid}").json()
+    assert j["pros"] == "My own note." and isinstance(j["score"], int) and j["fit"]
+
+
+def test_api_export_round_trip_keeps_people_timeline_letters_and_cv(client, tmp_path):
+    client.post("/api/cv", files={"file": ("cv.txt", b"MSc data science. Python, NLP, scikit-learn.", "text/plain")})
+    jid = client.post("/api/jobs", json={"company": "Acme", "role": "DS Intern"}).json()["id"]
+    client.post(f"/api/jobs/{jid}/contacts", json={"name": "Marie", "relation": "Recruiter", "lastContact": "2026-11-01"})
+    client.post(f"/api/jobs/{jid}/events", json={"kind": "Call", "text": "Intro call", "date": "2026-11-02"})
+    client.post(f"/api/jobs/{jid}/letters", json={"language": "French"})
+    r = client.get("/api/export")
+    assert r.headers["content-disposition"].startswith('attachment; filename="shortlist-export-')
+    dump = r.content
+
+    other = TestClient(create_app(tmp_path / "other.db", wiki_get=None))
+    for _ in range(2):  # importing twice must not duplicate anything
+        assert other.post("/api/import/json", files={"file": ("e.json", dump, "application/json")}).status_code == 200
+    j = other.get(f"/api/jobs/{jid}").json()
+    assert [c["name"] for c in j["contacts"]] == ["Marie"] and j["contacts"][0]["lastContact"] == "2026-11-01"
+    assert [e["kind"] for e in j["events"]] == ["Call"]
+    assert len(j["letters"]) == 1 and j["letters"][0]["language"] == "French"
+    assert other.get("/api/status").json()["cv"]["filename"] == "cv.txt"
+
+
+def test_daily_backup_keeps_the_newest_copies(tmp_path):
+    con = db.connect(tmp_path / "shortlist.db")
+    db.upsert_job(con, {"company": "Acme"})
+    con.close()
+    folder = tmp_path / "backups"
+    for day in ("2026-01-01", "2026-01-02", "2026-01-03"):
+        (folder.mkdir(exist_ok=True), (folder / f"shortlist-{day}.db").write_bytes(b"old"))
+    saved = db.backup(tmp_path / "shortlist.db", keep=2)
+    copy = sqlite3.connect(saved)
+    assert copy.execute("SELECT company FROM jobs").fetchone()[0] == "Acme"
+    copy.close()
+    assert sorted(p.name for p in folder.iterdir()) == ["shortlist-2026-01-03.db", saved.name]
+    assert db.backup(tmp_path / "missing.db") is None
+
+
+def test_shared_text_from_phone_apps():
+    li = "Check out this job at Northwind Analytics: Data Science Intern\nhttps://www.linkedin.com/jobs/view/4012345678"
+    assert ingest.find_links(li) == ["https://www.linkedin.com/jobs/view/4012345678"]
+    assert ingest.parse_shared(li)["company"] == "Northwind Analytics"
+    assert ingest.parse_shared("Data Analyst - Contoso Bank - Luxembourg") == {"role": "Data Analyst", "company": "Contoso Bank", "location": "Luxembourg"}
+    assert ingest.parse_shared("ML Engineer at Fabrikam")["company"] == "Fabrikam"
+    assert ingest.looks_like_job("https://lu.indeed.com/viewjob?jk=1") and not ingest.looks_like_job("https://example.com/blog/post")

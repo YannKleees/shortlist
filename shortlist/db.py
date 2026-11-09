@@ -1,6 +1,7 @@
 import re
 import sqlite3
 from datetime import UTC, datetime
+from pathlib import Path
 
 JOB_COLUMNS = {
     "company": "TEXT NOT NULL", "role": "TEXT DEFAULT ''", "location": "TEXT DEFAULT ''", "link": "TEXT DEFAULT ''",
@@ -10,6 +11,7 @@ JOB_COLUMNS = {
     "next_step": "TEXT DEFAULT ''", "notes": "TEXT DEFAULT ''", "source": "TEXT DEFAULT ''", "added_by": "TEXT DEFAULT 'you'",
     "deadline": "TEXT DEFAULT ''", "cv_sent": "INTEGER DEFAULT 0", "applied_on": "TEXT DEFAULT ''",
     "follow_up": "TEXT DEFAULT ''", "replied_on": "TEXT DEFAULT ''", "posting_text": "TEXT DEFAULT ''",
+    "salary": "TEXT DEFAULT ''", "distance_km": "REAL", "reasons": "TEXT DEFAULT ''",
     "created_at": "TEXT NOT NULL", "updated_at": "TEXT NOT NULL",
 }
 JOB_FIELDS = list(JOB_COLUMNS)
@@ -38,6 +40,7 @@ CREATE TABLE IF NOT EXISTS letters (
     language TEXT NOT NULL, text TEXT NOT NULL, model TEXT DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS mail_seen (msgid TEXT NOT NULL, job_id TEXT NOT NULL, PRIMARY KEY (msgid, job_id));
 """.replace("{cols}", ", ".join(f"{k} {v}" for k, v in JOB_COLUMNS.items()))
 
 now = lambda: datetime.now(UTC).isoformat(timespec="seconds")
@@ -81,8 +84,8 @@ def get_job(con, jid):
 
 def find_job(con, company, role, link=""):
     r = con.execute(
-        "SELECT id FROM jobs WHERE (lower(trim(company)) = lower(trim(?)) AND lower(trim(role)) = lower(trim(?)))"
-        " OR (? != '' AND link = ?)", (company, role or "", link, link)).fetchone()
+        "SELECT id FROM jobs WHERE (trim(?) != '' AND lower(trim(company)) = lower(trim(?)) AND lower(trim(role)) = lower(trim(?)))"
+        " OR (? != '' AND link = ?)", (company or "", company or "", role or "", link, link)).fetchone()
     return r["id"] if r else None
 
 
@@ -212,4 +215,40 @@ def get_setting(con, key, default=None):
 
 def set_setting(con, key, value):
     con.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", (key, value))
+    con.commit()
+
+
+# Backups
+
+
+def backup(path, folder=None, keep=14):
+    # Copy the database once a day into a backups folder next to it, keeping the newest `keep` copies.
+    src = Path(path)
+    if not src.exists() or src.stat().st_size == 0:
+        return None
+    out = Path(folder) if folder else src.parent / "backups"
+    out.mkdir(parents=True, exist_ok=True)
+    dest = out / f"{src.stem}-{datetime.now().date().isoformat()}.db"
+    if not dest.exists():
+        a, b = sqlite3.connect(src), sqlite3.connect(dest)
+        try:
+            a.backup(b)
+            b.execute("PRAGMA journal_mode = DELETE")  # a plain single file copy
+        finally:
+            b.close()
+            a.close()
+    for old in sorted(out.glob(f"{src.stem}-????-??-??.db"))[:-keep]:
+        old.unlink()
+    return dest
+
+
+# Mail that was already turned into a timeline entry
+
+
+def mail_seen(con, msgid, job_id):
+    return con.execute("SELECT 1 FROM mail_seen WHERE msgid = ? AND job_id = ?", (msgid, job_id)).fetchone() is not None
+
+
+def mark_mail_seen(con, msgid, job_id):
+    con.execute("INSERT OR IGNORE INTO mail_seen (msgid, job_id) VALUES (?, ?)", (msgid, job_id))
     con.commit()

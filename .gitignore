@@ -1,6 +1,6 @@
 # Personal data: never commit
 my-jobs*.json
-shortlist-export-*.json
+shortlist-export*.json
 exports/
 ranked*.json
 cv.md
@@ -11,6 +11,7 @@ postings.json
 # Database
 *.db
 *.db-*
+backups/
 
 # MLflow
 mlflow.db

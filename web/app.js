@@ -40,14 +40,19 @@ async function loadStatus() {
   $("#cv-state").innerHTML = status.cv ? esc(status.cv.filename) : `<span class="muted">No CV uploaded</span>`;
 }
 
+const routeLink = place => status?.home && place
+  ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(status.home)}&destination=${encodeURIComponent(place)}` : "";
+const scoreClass = j => j.fit === "Top pick" ? "top" : j.fit === "Good" ? "good" : j.fit === "Stretch" ? "low" : "";
+const byLine = j => j.addedBy && !["you", "pipeline"].includes(j.addedBy) ? j.addedBy : "";
+
 document.querySelectorAll("[data-cv-input]").forEach(inp => inp.addEventListener("change", async e => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
   const fd = new FormData(); fd.append("file", f);
   try {
     const r = await api("/api/cv", { method: "POST", body: fd });
-    toast(`CV saved: ${r.filename}`);
-    loadStatus();
+    toast(r.rescored ? `CV saved. Updated the fit of ${r.rescored} job${r.rescored === 1 ? "" : "s"}.` : `CV saved: ${r.filename}`);
+    loadStatus(); loadJobs();
   } catch (err) { toast(err.message); }
 }));
 
@@ -56,22 +61,26 @@ document.querySelectorAll("[data-cv-input]").forEach(inp => inp.addEventListener
 // The one thing that matters most about a job right now.
 function signal(j) {
   const today = todayISO();
+  if (j.hasText === false && j.status === "To apply") return `<span class="warn">Paste the job text</span>`;
   if (isFollowUpDue(j, today)) return `<span class="bad">Follow up due</span>`;
   if (j.repliedOn) return `<span class="good">Replied ${fmt(j.repliedOn)}</span>`;
   if (j.cvSent) return `<span class="muted">Sent ${fmt(j.appliedOn)}, no reply</span>`;
   if (j.deadline) return `<span class="${j.deadline <= today ? "bad" : "muted"}">Deadline ${fmt(j.deadline)}</span>`;
-  return j.fit === "Top pick" ? `<span class="accent">Top pick</span>` : j.fit ? `<span class="muted">${esc(j.fit)}</span>` : "";
+  return j.fit ? `<span class="muted">${esc(j.fit)}</span>` : "";
 }
 
 function row(j) {
-  const meta = [j.location, j.workSetup !== "Unknown" && j.workSetup].filter(Boolean).map(esc).join(dot);
+  const km = typeof j.distanceKm === "number" ? `${Math.round(j.distanceKm)} km` : "";
+  const meta = [j.location, km, j.workSetup !== "Unknown" && j.workSetup, j.salary].filter(Boolean).map(esc).join(dot);
   const side = [view.group !== "active" && esc(j.status), j.contactCount && `${j.contactCount} ${j.contactCount === 1 ? "person" : "people"}`].filter(Boolean).join(dot);
-  return `<div class="row px-4 sm:px-5 py-3.5 grid sm:grid-cols-[1fr_auto] gap-x-6 gap-y-1" data-id="${esc(j.id)}" role="button" tabindex="0">
+  const by = byLine(j);
+  return `<div class="row px-4 sm:px-5 py-3.5 grid grid-cols-[auto_1fr] sm:grid-cols-[auto_1fr_auto] gap-x-4 gap-y-1" data-id="${esc(j.id)}" role="button" tabindex="0">
+    <span class="score ${scoreClass(j)} mt-0.5" title="Fit score">${typeof j.score === "number" ? j.score : "?"}</span>
     <div class="min-w-0">
-      <p class="sm:truncate"><span class="font-medium">${esc(j.company)}</span>${j.role ? `<span class="muted">${dot}${esc(j.role)}</span>` : ""}</p>
-      ${meta ? `<p class="text-sm muted truncate">${meta}</p>` : ""}
+      <p class="sm:truncate"><span class="font-medium">${esc(j.company || "Company unknown")}</span>${j.role ? `<span class="muted">${dot}${esc(j.role)}</span>` : ""}</p>
+      ${meta || by ? `<p class="text-sm muted truncate">${meta}${by ? `${meta ? " " : ""}<span class="tag ml-1">from ${esc(by)}</span>` : ""}</p>` : ""}
     </div>
-    <div class="text-sm sm:text-right">
+    <div class="text-sm sm:text-right col-start-2 sm:col-start-3">
       <p>${signal(j)}</p>
       ${side ? `<p class="muted">${side}</p>` : ""}
     </div>
@@ -126,9 +135,7 @@ $("#link-form").addEventListener("submit", async e => {
   const f = e.target, err = f.querySelector("[data-error]"), btn = f.querySelector("[type=submit]");
   err.textContent = ""; btn.disabled = true; btn.textContent = "Reading";
   try {
-    const text = f.text.value.trim();
-    if (text && !f.company.value.trim()) throw new Error("Enter the company name for pasted text.");
-    const job = await api("/api/jobs/import-link", { method: "POST", json: text ? { url: f.url.value, text, company: f.company.value, role: f.role.value } : { url: f.url.value } });
+    const job = await api("/api/jobs/import-link", { method: "POST", json: { url: f.url.value } });
     $("#add-dialog").close(); await loadJobs();
     openDetail(job.id);
   } catch (ex) { err.textContent = ex.message; }
@@ -180,10 +187,37 @@ const state = msg => { if (msg) toast(msg); };
 
 function fillDetail(j) {
   cur = j;
-  $("#d-company").textContent = j.company;
+  $("#d-company").textContent = j.company || "Company unknown";
   $("#d-role").textContent = j.role || "";
-  $("#d-meta").textContent = [j.location, j.workSetup !== "Unknown" && j.workSetup, j.source && `via ${j.source}`, j.fit].filter(Boolean).join(dot);
+  const km = typeof j.distanceKm === "number" ? `${Math.round(j.distanceKm)} km from home` : "";
+  const route = routeLink(j.location);
+  $("#d-meta").innerHTML = [esc(j.location), km && (route ? `<a class="underline underline-offset-2" href="${esc(route)}" target="_blank" rel="noopener">${km}</a>` : km),
+    j.workSetup !== "Unknown" && esc(j.workSetup), j.source && `via ${esc(j.source)}`, byLine(j) && `sent by ${esc(byLine(j))}`].filter(Boolean).join(dot);
   $("#d-link").hidden = !j.link; $("#d-link").href = j.link || "#";
+  $("#d-score").textContent = typeof j.score === "number" ? j.score : "?";
+  $("#d-fit").textContent = j.fit || "";
+  $("#d-fit").className = `font-medium ${j.fit === "Top pick" ? "good" : j.fit === "Stretch" ? "bad" : ""}`;
+  $("#d-guess").hidden = j.hasText !== false;
+  $("#d-type").textContent = j.type || "Not stated";
+  $("#d-reasons").innerHTML = (j.reasons || []).map(r => {
+    const width = r.max ? Math.max(4, Math.round(100 * Math.max(r.points, 0) / r.max)) : 100;
+    const icon = r.tone === "good" ? "✓" : r.tone === "bad" ? "✕" : "•";
+    return `<li class="grid grid-cols-[1.1rem_1fr_4.5rem] sm:grid-cols-[1.1rem_7rem_1fr_5rem] items-center gap-x-3 gap-y-1">
+      <span class="${r.tone === "ok" ? "warn" : r.tone} font-semibold text-center" aria-hidden="true">${icon}</span>
+      <span class="muted hidden sm:block">${esc(r.label)}</span>
+      <span>${esc(r.note)}</span>
+      <span class="grid gap-0.5 justify-items-end"><span class="mono muted text-xs">${r.max ? `${r.points}/${r.max}` : r.points || ""}</span>
+        ${r.max ? `<span class="meter ${r.tone} w-full"><i style="width:${width}%"></i></span>` : ""}</span>
+    </li>`;
+  }).join("") || `<li class="muted">No score yet.</li>`;
+  const tf = $("#text-form");
+  $("#d-needs-text").hidden = j.hasText !== false;
+  if (j.hasText === false && tf.dataset.job !== j.id) {
+    tf.reset(); tf.dataset.job = j.id; tf.company.value = j.company || ""; tf.role.value = j.role || "";
+    tf.querySelector("[data-error]").textContent = "";
+    const a = tf.querySelector("[data-open-posting]"); a.href = j.link || "#"; a.hidden = !j.link;
+  }
+  $("#d-letter").href = `letter.html?job=${encodeURIComponent(j.id)}`;
   $("#d-status").value = j.status;
   $("#d-cv").checked = !!j.cvSent;
   $("#d-due").hidden = !isFollowUpDue(j);
@@ -245,7 +279,17 @@ $("#d-cv").addEventListener("change", e => e.target.checked && cur.status === "T
   ? patch({ status: "Applied" }, "Marked as applied. Follow up in 10 days.")
   : patch({ cvSent: e.target.checked ? 1 : 0 }));
 $("#d-edit").addEventListener("click", () => openJob(cur));
-$("#d-letter").addEventListener("click", () => openLetter(cur));
+
+$("#text-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target, btn = f.querySelector("[type=submit]");
+  btn.disabled = true; btn.textContent = "Reading";
+  try {
+    await api(`/api/jobs/${cur.id}/text`, { method: "POST", json: Object.fromEntries(new FormData(f)) });
+    f.dataset.job = ""; await refresh("Read. The fit is up to date.");
+  } catch (ex) { f.querySelector("[data-error]").textContent = ex.message; }
+  btn.disabled = false; btn.textContent = "Read it";
+});
 
 const pf = $("#person-form");
 function openPerson(c) {
@@ -275,10 +319,11 @@ $("#d-people").addEventListener("click", async e => {
 
 $("#event-form").addEventListener("submit", async e => {
   e.preventDefault();
-  const f = e.target;
+  const f = e.target, before = cur.followUp;
   try {
     await api(`/api/jobs/${cur.id}/events`, { method: "POST", json: Object.fromEntries(new FormData(f)) });
     f.text.value = ""; await refresh("Added to the timeline");
+    if (cur.followUp && cur.followUp !== before) toast(`Added. Next follow up on ${fmt(cur.followUp)}.`);
   } catch (ex) { state(ex.message); }
 });
 $("#d-events").addEventListener("click", async e => {
@@ -287,83 +332,59 @@ $("#d-events").addEventListener("click", async e => {
   await api(`/api/events/${b.closest("[data-eid]").dataset.eid}`, { method: "DELETE" }); await refresh("Removed");
 });
 
-// Letters
-
-let letterJob = null, letters = [], current = null, dirty = false;
-
-function showLetter(l) {
-  current = l; dirty = false;
-  $("#letter-text").value = l ? l.text : "";
-  for (const [id, f] of [["#letter-txt", "txt"], ["#letter-docx", "docx"]]) {
-    const a = $(id);
-    a.href = l ? `/api/letters/${l.id}/download?format=${f}` : "#";
-    a.classList.toggle("pointer-events-none", !l); a.classList.toggle("opacity-40", !l);
-  }
-  $("#letter-save").disabled = $("#letter-copy").disabled = !l;
-  $("#revise-bar").querySelectorAll("button, input").forEach(el => (el.disabled = !l));
-  $("#letter-version").hidden = !letters.length;
-  $("#letter-version").innerHTML = letters.map((x, i) =>
-    `<option value="${x.id}" ${l && x.id === l.id ? "selected" : ""}>Version ${letters.length - i}${dot}${esc(x.language)}${dot}${fmt(x.updatedAt)}</option>`).join("");
-  $("#letter-state").textContent = l ? `Written with ${l.model}` : "";
-}
-
-async function openLetter(job) {
-  letterJob = job;
-  $("#letter-job").textContent = `${job.company}${job.role ? dot + job.role : ""}`;
-  letters = await api(`/api/jobs/${job.id}/letters`);
-  showLetter(letters[0] || null);
-  $("#letter-dialog").showModal();
-}
-
-$("#letter-text").addEventListener("input", () => { dirty = true; $("#letter-state").textContent = "Unsaved changes"; });
-$("#letter-version").addEventListener("change", e => {
-  if (dirty && !confirm("Discard your unsaved edits?")) { e.target.value = current.id; return; }
-  showLetter(letters.find(x => String(x.id) === e.target.value));
-});
-$("#letter-generate").addEventListener("click", async () => {
-  if (!status?.cv) { $("#letter-state").textContent = "Upload your CV in Settings first."; return; }
-  if (dirty && !confirm("Write a new draft? Unsaved edits to this version are lost.")) return;
-  const btn = $("#letter-generate");
-  btn.disabled = true; btn.textContent = "Writing";
-  $("#letter-state").textContent = `Writing with ${status.llm.model}. This can take a minute on a laptop.`;
-  try {
-    const l = await api(`/api/jobs/${letterJob.id}/letters`, { method: "POST", json: { language: $("#letter-lang").value, notes: $("#letter-notes").value } });
-    letters = [l, ...letters]; showLetter(l);
-    if (dd.open) refresh();
-  } catch (ex) { $("#letter-state").textContent = ex.message; }
-  btn.disabled = false; btn.textContent = "Write draft";
-});
-$("#letter-save").addEventListener("click", async () => {
-  const l = await api(`/api/letters/${current.id}`, { method: "PUT", json: { text: $("#letter-text").value } });
-  letters = letters.map(x => (x.id === l.id ? l : x)); showLetter(l); $("#letter-state").textContent = "Saved";
-});
-async function revise(instruction) {
-  if (!current || !instruction.trim()) return;
-  const bar = $("#revise-bar");
-  bar.querySelectorAll("button, input").forEach(el => (el.disabled = true));
-  $("#letter-state").textContent = "Revising. This can take a minute on a laptop.";
-  try {
-    const l = await api(`/api/letters/${current.id}/revise`, { method: "POST", json: { instruction, text: $("#letter-text").value } });
-    letters = [l, ...letters]; showLetter(l); $("#letter-state").textContent = "Saved as a new version";
-    if (dd.open) refresh();
-  } catch (ex) { $("#letter-state").textContent = ex.message; }
-  bar.querySelectorAll("button, input").forEach(el => (el.disabled = false));
-}
-$("#revise-bar").addEventListener("click", e => { const b = e.target.closest("[data-revise]"); if (b) revise(b.dataset.revise); });
-$("#revise-custom").addEventListener("keydown", e => {
-  if (e.key === "Enter") { e.preventDefault(); revise(e.target.value); e.target.value = ""; }
-});
-$("#letter-copy").addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText($("#letter-text").value); toast("Copied"); }
-  catch { $("#letter-text").select(); }
-});
-$("#letter-dialog").addEventListener("cancel", e => { if (dirty && !confirm("Close without saving your edits?")) e.preventDefault(); });
-
 // Settings: model, import
+
+function helperLink() {
+  const to = status?.mail?.address, name = $("#helper-name").value.trim() || "Mama";
+  const me = status?.firstName ? `&for=${encodeURIComponent(status.firstName)}` : "";
+  return to ? `${status.helperPage}#to=${encodeURIComponent(to)}&name=${encodeURIComponent(name)}${me}` : "";
+}
+function showMailState() {
+  const m = status?.mail || {}, last = m.last || {};
+  $("#mail-check").hidden = !m.ready;
+  $("#mail-state").innerHTML = !m.ready ? `<span class="muted">Not connected</span>`
+    : last.ok === false ? `<span class="bad">${esc(last.message)}</span>`
+    : m.lastCheck ? `<span class="good">Connected</span><span class="muted">${dot}checked ${esc(new Date(m.lastCheck).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</span>`
+    : `<span class="good">Connected</span>`;
+  const link = helperLink();
+  $("#helper-link").textContent = link || "Connect a Gmail inbox first: the link sends jobs there.";
+  $("#helper-copy").disabled = !link;
+}
+$("#helper-name").addEventListener("input", showMailState);
+$("#helper-copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(helperLink()); toast("Link copied. Send it on WhatsApp."); }
+  catch { toast("Select the link below and copy it."); }
+});
+$("#you-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = e.target.querySelector("[type=submit]"); btn.disabled = true; btn.textContent = "Updating scores";
+  try { status = await api("/api/settings", { method: "PUT", json: Object.fromEntries(new FormData(e.target)) }); toast("Saved. Distances and scores updated."); loadJobs(); showMailState(); }
+  catch (ex) { toast(ex.message); }
+  btn.disabled = false; btn.textContent = "Save";
+});
+$("#mail-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  status = await api("/api/settings", { method: "PUT", json: Object.fromEntries(new FormData(e.target)) });
+  e.target.mail_password.value = ""; showMailState(); checkMail();
+});
+async function checkMail() {
+  $("#mail-state").innerHTML = `<span class="muted">Checking your mail</span>`;
+  try {
+    const r = await api("/api/mail/check", { method: "POST" });
+    if (r.ok) toast(r.added || r.applied || r.replies ? `Mail: ${r.added} new jobs, ${r.applied} applications, ${r.replies} replies` : "Mail checked. Nothing new.");
+    await loadStatus(); loadJobs();
+  } catch (ex) { toast(ex.message); }
+  showMailState();
+}
+$("#mail-check").addEventListener("click", checkMail);
 
 $("#settings-btn").addEventListener("click", () => {
   const f = $("#settings-form"), llm = status?.llm;
   $("#import-state").textContent = "";
+  const you = $("#you-form"); you.home.value = status?.home || ""; you.languages.value = status?.languages || "";
+  you.first_name.value = status?.firstName || "";
+  $("#mail-form").mail_address.value = status?.mail?.address || "";
+  showMailState();
   if (llm) {
     f.llm_model.value = llm.model; f.llm_url.value = llm.url;
     $("#model-list").innerHTML = llm.models.map(m => `<option value="${esc(m)}">`).join("");
@@ -389,5 +410,9 @@ $("#json-input").addEventListener("change", async e => {
   } catch (ex) { st.className = "text-sm bad"; st.textContent = ex.message; }
 });
 
-loadStatus().catch(() => toast("The Shortlist server is not running. Start it with: python -m shortlist"));
+loadStatus().catch(() => toast("The Shortlist server is not running. Start it with start.bat"));
 loadJobs().catch(() => {});
+// Jobs that arrive by mail show up without a reload.
+setInterval(() => { if (!document.querySelector("dialog[open]") && !document.hidden) loadJobs().catch(() => {}); }, 60000);
+// Coming back from the letter tab: show the new draft count.
+document.addEventListener("visibilitychange", () => { if (!document.hidden && dd.open && cur) refresh().catch(() => {}); });

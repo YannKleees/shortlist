@@ -60,34 +60,81 @@ def validate(d):
     }
 
 
-def rule_extract(text):
+INTERN = r"\bintern(ship)?\b|\bstage\b|praktikum|trainee|working student|werkstudent"
+JUNIOR = r"\bjunior\b|graduate|entry[- ]level"
+# In a title any of these words means a senior role. In the posting text, "senior" only counts when it names the role
+# itself, so "mentoring from senior data scientists" does not make an internship senior.
+SENIOR_TITLE = r"\bsenior\b|\bsr\b|\blead\b|principal|head of|\bstaff\b|\bmanager\b"
+SENIOR_TEXT = r"\bsenior\s+(?:\w+\s+)?(?:scientist|engineer|analyst|developer|consultant|manager|position|role)\b(?!s)|senior[- ]level"
+DOMAIN_RULES = [
+    ("data_science", r"data scien"),
+    ("ml_engineering", r"(machine learning|\bml\b|\bai\b|mlops) engineer"),
+    ("data_science", r"machine learning|\bnlp\b|deep learning|computer vision"),
+    ("data_engineering", r"data engineer|\betl\b|\bspark\b"),
+    ("analytics", r"analyst|analytics|power bi|\bbi\b|reporting"),
+]
+YEARS = re.compile(r"(?<![\d.,])(\d{1,2})\s*(?:\+|(?:-|–|to)\s*\d{1,2})?\s*\+?\s*(?:years?|yrs|ans|années|jahre)\b")
+EXPERIENCE = re.compile(r"experience|expérience|erfahrung|track record|background in|worked|working in", re.I)
+NOT_EXPERIENCE = re.compile(r"founded|history|since|ago|\bold\b|anniversary|established|existence|contract|duration", re.I)
+LANG_CONTEXT = re.compile(r"fluen|native|proficien|speak|spoken|written|language|knowledge of|command of|mother tongue|bilingual|"
+                          r"\b[abc][12]\b|level|required|must|courant|maîtrise|kenntnisse|fließend|\bin (?:english|french|german|dutch)")
+LANG_OPTIONAL = re.compile(r"\bplus\b|asset|advantage|nice to have|bonus|beneficial|desirable|preferred|would be great|"
+                           r"\batout\b|von vorteil|wünschenswert|pluspunkt|optional")
+
+
+def _first(rules, s):
+    return next((label for label, p in rules if re.search(p, s)), None)
+
+
+def years_required(t):
+    # Minimum years of experience, ignoring numbers like "founded 25 years ago" or "a 2 year contract".
+    for m in YEARS.finditer(t):
+        start = max(t.rfind(c, 0, m.start()) for c in ".;!?\n") + 1
+        ends = [i for i in (t.find(c, m.end()) for c in ".;!?\n") if i != -1]
+        end = min(ends) if ends else len(t)
+        near, close = t[max(start, m.start() - 60):min(end, m.end() + 60)], t[max(start, m.start() - 30):min(end, m.end() + 15)]
+        if EXPERIENCE.search(near) and not NOT_EXPERIENCE.search(close):
+            return int(m.group(1))
+    return None
+
+
+def languages_required(t):
+    # A language counts when the posting talks about speaking it, and not when it is only "a plus".
+    def part(m, stops, reach=10_000):
+        # The text around a mention, cut at the nearest stop characters and at most `reach` characters away.
+        start = max([t.rfind(c, 0, m.start()) for c in stops] + [m.start() - reach - 1]) + 1
+        ends = [i for i in (t.find(c, m.end()) for c in stops) if i != -1] + [m.end() + reach]
+        return t[max(0, start):min(ends)]
+
+    def needed(m):
+        sentence, clause = part(m, ".;!?\n•|", reach=40), part(m, ".;,!?\n•|")
+        return bool(LANG_CONTEXT.search(sentence)) and not LANG_OPTIONAL.search(clause)
+
+    return [name for name, p in LANGS.items() if any(needed(m) for m in re.finditer(p, t))]
+
+
+def rule_extract(text, title=""):
     t = text.lower()
+    ti = (title or "").lower()
     has = lambda p: re.search(p, t) is not None
 
-    if has(r"\bintern(ship)?\b|\bstage\b|praktikum|trainee|working student|werkstudent"):
+    if ti and re.search(INTERN, ti):
         sen = "intern"
-    elif has(r"\bsenior\b|\blead\b|principal|head of|\bstaff\b"):
+    elif ti and re.search(SENIOR_TITLE, ti):
         sen = "senior"
-    elif has(r"\bjunior\b|graduate|entry[- ]level"):
+    elif ti and re.search(JUNIOR, ti):
+        sen = "junior"
+    elif has(INTERN):
+        sen = "intern"
+    elif has(SENIOR_TEXT):
+        sen = "senior"
+    elif has(JUNIOR):
         sen = "junior"
     else:
         sen = "unknown"
 
-    m = re.search(r"(\d{1,2})\s*\+?\s*(?:years|yrs|ans|jahre)", t)
-    yrs = int(m.group(1)) if m else None
-
-    if has(r"data scien"):
-        dom = "data_science"
-    elif has(r"(machine learning|\bml\b|\bai\b) engineer"):
-        dom = "ml_engineering"
-    elif has(r"machine learning|\bnlp\b|deep learning|computer vision"):
-        dom = "data_science"
-    elif has(r"data engineer|\betl\b|\bspark\b"):
-        dom = "data_engineering"
-    elif has(r"analyst|analytics|power bi|\bbi\b|reporting"):
-        dom = "analytics"
-    else:
-        dom = "other"
+    yrs = years_required(t)
+    dom = _first(DOMAIN_RULES, ti) or _first(DOMAIN_RULES, t) or "other"
 
     if has(r"hybrid|home office|telework|t[ée]l[ée]travail"):
         setup = "Hybrid"
@@ -101,13 +148,13 @@ def rule_extract(text):
         setup = "Unknown"
 
     if sen == "intern":
-        jt = "Working student" if has(r"working student|werkstudent") else "Internship"
+        jt = "Working student" if re.search(r"working student|werkstudent", ti) or has(r"working student|werkstudent") else "Internship"
     else:
         jt = "Job"
 
     return validate({
         "seniority": sen, "years_required": yrs, "domain": dom, "work_setup": setup, "job_type": jt,
-        "languages_required": [k for k, p in LANGS.items() if has(p)],
+        "languages_required": languages_required(t),
         "skills": [s for s in ["python", "sql", "pandas", "pytorch", "scikit-learn", "spark", "power bi", "r"] if has(rf"\b{re.escape(s)}\b")],
     })
 
@@ -126,3 +173,28 @@ def llm_extract(text, cv, client=None, model=DEFAULT_MODEL):
     )
     block = next(b for b in r.content if b.type == "tool_use")
     return validate(block.input)
+
+
+_AMOUNT = r"\d{1,3}(?:[.,   ]\d{3})*(?:[.,]\d{1,2})?\s?[kK]?"
+_CUR = r"(?:€|eur\b|euros?\b)"
+SALARY = re.compile(
+    rf"(?:{_CUR}\s?{_AMOUNT}|{_AMOUNT}\s?{_CUR})"
+    rf"(?:\s?(?:-|–|to|bis|à)\s?(?:{_CUR}\s?)?{_AMOUNT}(?:\s?{_CUR})?)?"
+    r"(?:\s?(?:gross|brutto|brut)\b)?"
+    r"(?:\s?(?:per|/|a|an|par|pro)?\s?(?:month|year|annum|hour|mois|an|année|monat|jahr|stunde|monthly|yearly|annually)\b)?"
+    r"(?:\s?(?:gross|brutto|brut)\b)?",
+    re.I,
+)
+NOT_PAY = re.compile(r"^\s*(?:million|billion|bn|mio|mrd|m\b|revenue|turnover|budget)", re.I)
+
+
+def salary_text(text):
+    # The pay as the posting states it, for example "€1,500 - 2,000 per month", or "" when it says nothing.
+    for m in SALARY.finditer(text or ""):
+        if NOT_PAY.match(text[m.end():m.end() + 12]) or not re.search(r"\d", m.group(0)):
+            continue
+        digits = re.sub(r"\D", "", m.group(0).split("-")[0].split("–")[0])
+        if digits and int(digits[:7]) < 8 and "k" not in m.group(0).lower():
+            continue  # "€5 voucher" and similar small numbers are not a salary
+        return " ".join(m.group(0).split())[:60]
+    return ""

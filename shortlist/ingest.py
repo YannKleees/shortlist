@@ -138,3 +138,82 @@ def parse_posting(html, url):
     out["text"] = out["text"][:20000]
     out["about"] = summarize(out["about"], n=2, limit=320) if out["about"] else about_section(out["text"], out["company"])
     return out
+
+
+# Links shared from a phone
+
+URL = re.compile(r"https?://[^\s<>\"')\]]+", re.I)
+JOB_URL = re.compile(r"linkedin\.[a-z.]+/(?:comm/)?jobs|indeed\.|stepstone|glassdoor|moovijob|jobs\.lu|monster\.|welcometothejungle|"
+                     r"greenhouse\.io|lever\.co|myworkdayjobs|smartrecruiters|personio|join\.com|recruitee|teamtailor|workable|"
+                     r"successfactors|taleo|/jobs?/|/careers?/|/vacanc|/stellen|/emploi|/offres?|/job-|career|karriere|vacature", re.I)
+SKIP_URL = re.compile(r"accounts\.google|support\.google|unsubscribe|/settings|/help/|privacy|\.(?:png|jpe?g|gif|css|js)(?:\?|$)", re.I)
+
+
+def find_links(text):
+    seen, out = set(), []
+    for m in URL.finditer(text or ""):
+        u = m.group(0).rstrip(".,;:!?*")
+        if u not in seen and not SKIP_URL.search(u):
+            seen.add(u)
+            out.append(u)
+    return out
+
+
+def looks_like_job(url):
+    return bool(JOB_URL.search(url))
+
+
+def parse_shared(text, url=""):
+    """Company and role from the text a phone app adds when you share a job, for example
+    "Check out this job at Northwind: Data Scientist" (LinkedIn) or "Data Scientist - Northwind - Luxembourg" (Indeed)."""
+    text = text or ""
+    if url:
+        text = text.replace(url, " ")
+    lines = [ln.strip(" -–|:\t") for ln in URL.sub(" ", text).splitlines()]
+    lines = [ln for ln in lines if ln]
+    first = lines[0] if lines else ""
+    m = re.match(r"^(?:check out this job|have a look at this job|schau dir diesen job an)?\s*(?:at|bei|chez)\s+(?P<company>.+?):\s*(?P<role>.+)$", first, re.I)
+    if m:
+        return {"company": m["company"].strip(), "role": m["role"].strip(), "location": ""}
+    first = re.sub(r"^(?:i found this job|check out this job|have a look at this job|job)[^:]*:\s*", "", first, flags=re.I).strip()
+    parts = [p.strip() for p in re.split(r"\s+[-–|]\s+", first) if p.strip()]
+    if len(parts) >= 3:
+        return {"role": parts[0], "company": parts[1], "location": parts[2]}
+    if len(parts) == 2:
+        return {"role": parts[0], "company": parts[1], "location": ""}
+    m = re.match(r"^(?P<role>.+?)\s+(?:at|bei|chez)\s+(?P<company>.+)$", first, re.I)
+    if m:
+        return {"company": m["company"].strip(), "role": m["role"].strip(), "location": ""}
+    return {"company": "", "role": first[:120], "location": ""}
+
+
+def linkedin_guest_url(link):
+    m = re.search(r"linkedin\.com/jobs/view/(\d{6,})", link)
+    return f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{m.group(1)}" if m else ""
+
+
+def parse_linkedin_guest(html):
+    # The public job card LinkedIn serves without a login.
+    soup = BeautifulSoup(html, "html.parser")
+    pick = lambda sel: " ".join(soup.select_one(sel).get_text(" ").split()) if soup.select_one(sel) else ""
+    return {
+        "company": pick(".topcard__org-name-link") or pick(".topcard__flavor"),
+        "role": pick(".top-card-layout__title") or pick(".topcard__title"),
+        "location": pick(".topcard__flavor--bullet"),
+        "text": pick(".show-more-less-html__markup") or pick(".description__text"),
+        "about": "",
+    }
+
+
+def read_posting(link, fetch=fetch):
+    """Read a posting. LinkedIn's public job card first, since the normal page often shows a login wall."""
+    guest = linkedin_guest_url(link)
+    if guest:
+        try:
+            p = parse_linkedin_guest(fetch(guest))
+            if p["company"] and p["text"]:
+                p["about"] = about_section(p["text"], p["company"])
+                return p
+        except Exception:
+            pass
+    return parse_posting(fetch(link), link)

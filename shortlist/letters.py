@@ -1,4 +1,5 @@
 import io
+import re
 
 import requests
 
@@ -43,7 +44,13 @@ def chat(messages, model=DEFAULT_MODEL, url=DEFAULT_URL, post=requests.post):
     r = post(f"{url.rstrip('/')}/api/chat", json={"model": model, "messages": messages, "stream": False,
                                                   "options": {"temperature": 0.6}}, timeout=300)
     r.raise_for_status()
-    return r.json()["message"]["content"].strip()
+    return clean_reply(r.json()["message"]["content"])
+
+
+def clean_reply(text):
+    # Reasoning models such as qwen3 or deepseek-r1 put their thinking in <think> tags before the answer.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
+    return re.sub(r"^.*?</think>", "", text, flags=re.S).strip()
 
 
 def generate(cv, job, language="English", notes="", model=DEFAULT_MODEL, url=DEFAULT_URL, post=requests.post):

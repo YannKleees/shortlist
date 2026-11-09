@@ -4,97 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Shortlist</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='6' fill='%231d4ed8'/%3E%3C/svg%3E">
+  <link rel="icon" href="icons/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <script>
-    tailwind.config = { theme: { extend: { fontFamily: {
-      sans: ["Geist", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
-      mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
-    } } } };
-  </script>
-  <style>
-    :root {
-      --bg: #f7f7f5; --surface: #ffffff; --subtle: #f0f0ec; --border: #e3e3de; --strong: #cfcfc8;
-      --text: #1b1b18; --muted: #6b6b65; --accent: #1d4ed8; --accent-fg: #ffffff;
-      --good: #15803d; --warn: #a16207; --bad: #be123c;
-      color-scheme: light;
-    }
-    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-      --bg: #111110; --surface: #191918; --subtle: #21211f; --border: #2c2c29; --strong: #3d3d39;
-      --text: #ededea; --muted: #9a9a93; --accent: #8aa9ff; --accent-fg: #0d0d0c;
-      --good: #4ade80; --warn: #facc15; --bad: #fb7185;
-      color-scheme: dark;
-    } }
-    :root[data-theme="dark"] {
-      --bg: #111110; --surface: #191918; --subtle: #21211f; --border: #2c2c29; --strong: #3d3d39;
-      --text: #ededea; --muted: #9a9a93; --accent: #8aa9ff; --accent-fg: #0d0d0c;
-      --good: #4ade80; --warn: #facc15; --bad: #fb7185;
-      color-scheme: dark;
-    }
-    html, body { background: var(--bg); color: var(--text); }
-    body { font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
-    [hidden] { display: none !important; }
-    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    .muted { color: var(--muted); }
-    .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); } .accent { color: var(--accent); }
-    .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .8125rem; }
-    .eyebrow { font-size: .72rem; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; height: 2.25rem; padding: 0 .85rem;
-      border-radius: .5rem; font-size: .875rem; font-weight: 500; white-space: nowrap; border: 1px solid transparent; transition: background .12s, border-color .12s; }
-    .btn:disabled { opacity: .45; cursor: not-allowed; }
-    .btn-primary { background: var(--accent); color: var(--accent-fg); }
-    .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
-    .btn-secondary { background: var(--surface); border-color: var(--border); }
-    .btn-secondary:hover:not(:disabled) { border-color: var(--strong); }
-    .btn-quiet { color: var(--muted); }
-    .btn-quiet:hover:not(:disabled) { background: var(--subtle); color: var(--text); }
-    .btn-sm { height: 1.875rem; padding: 0 .6rem; font-size: .8125rem; }
-    .btn-danger { color: var(--bad); }
-
-    .field { width: 100%; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
-      padding: .45rem .7rem; font-size: .9375rem; color: var(--text); }
-    .field::placeholder, .inline::placeholder { color: var(--muted); opacity: .8; }
-    .field:hover { border-color: var(--strong); }
-    .field:focus { border-color: var(--accent); outline: none; }
-    select.field { padding-right: 2rem; }
-    .label { display: grid; gap: .3rem; font-size: .8125rem; font-weight: 500; color: var(--muted); }
-
-    /* Text that is editable in place: looks like plain text until hovered or focused. */
-    .inline { width: 100%; min-width: 0; background: transparent; border: 1px solid transparent; border-radius: .375rem;
-      padding: .25rem .4rem; margin: 0 -.4rem; color: var(--text); resize: none; }
-    textarea.inline { min-height: 2.2rem; field-sizing: content; }
-    .inline:hover { background: var(--subtle); }
-    .inline:focus { background: var(--surface); border-color: var(--accent); outline: none; }
-    input[type=date] { min-width: 0; }
-
-    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; }
-    .rows > * + * { border-top: 1px solid var(--border); }
-    .row { cursor: pointer; transition: background .12s; }
-    .row:hover { background: var(--subtle); }
-
-    .tab { position: relative; padding: .5rem 0; font-size: .9rem; font-weight: 500; color: var(--muted); }
-    .tab:hover { color: var(--text); }
-    .tab[aria-selected="true"] { color: var(--text); }
-    .tab[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--text); border-radius: 2px; }
-
-    dialog { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: .75rem; padding: 0;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, .14); }
-    dialog::backdrop { background: rgba(10, 10, 9, .32); }
-    dialog.sheet { margin: 0 0 0 auto; width: min(40rem, 100%); max-width: 100%; height: 100dvh; max-height: 100dvh;
-      border-radius: 0; border-width: 0 0 0 1px; }
-    dialog.sheet[open] { animation: slide .18s ease-out; }
-    @keyframes slide { from { transform: translateX(2rem); opacity: 0; } }
-    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-    /* A popover sits in the top layer, so the toast stays visible above open dialogs. */
-    #toast { position: fixed; inset: auto auto 1.5rem 50%; transform: translateX(-50%); margin: 0; border: 0;
-      border-radius: .5rem; padding: .5rem 1rem; font-size: .875rem; background: var(--text); color: var(--bg); }
-    section.block + section.block { border-top: 1px solid var(--border); }
-    section.block > * { min-width: 0; }
-  </style>
+  <script src="tw-config.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#1d4ed8">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 </head>
 <body class="font-sans">
   <header class="border-b" style="border-color: var(--border)">
@@ -130,17 +49,9 @@
     <form id="link-form" class="p-5 sm:p-6 grid gap-4">
       <div>
         <h2 class="text-base font-semibold">Add a job</h2>
-        <p class="text-sm muted">Paste the link from LinkedIn, Indeed or a careers page.</p>
+        <p class="text-sm muted">Paste the link from LinkedIn, Indeed or a careers page. If the page cannot be read, the job is saved anyway and you can paste the description later.</p>
       </div>
-      <input name="url" type="url" required placeholder="https://" aria-label="Job link" class="field">
-      <details class="text-sm">
-        <summary class="cursor-pointer muted">The page needs a login? Paste the text instead</summary>
-        <div class="mt-3 grid gap-3 sm:grid-cols-2">
-          <label class="label">Company<input name="company" class="field"></label>
-          <label class="label">Role<input name="role" class="field"></label>
-          <label class="label sm:col-span-2">Job description<textarea name="text" rows="5" class="field"></textarea></label>
-        </div>
-      </details>
+      <textarea name="url" required rows="2" inputmode="url" placeholder="https://" aria-label="Job link" class="field"></textarea>
       <p class="text-sm bad" data-error role="alert"></p>
       <div class="flex items-center justify-between gap-2">
         <button type="button" id="manual-btn" class="btn btn-quiet -ml-3">Enter by hand</button>
@@ -200,6 +111,40 @@
           <select id="d-status" class="field !w-auto !h-8 !py-0"></select></label>
       </section>
 
+      <section id="d-needs-text" class="block py-6" hidden>
+        <form id="text-form" class="callout p-4 grid gap-3">
+          <div>
+            <p class="font-medium">This page could not be read</p>
+            <p class="text-sm muted">Indeed and some other sites block apps from reading their pages. Open the posting, copy the whole job description, and paste it here. Then the fit, salary and letter can use it.</p>
+          </div>
+          <div class="grid gap-2 sm:grid-cols-2">
+            <input name="company" placeholder="Company" class="field">
+            <input name="role" placeholder="Role" class="field">
+          </div>
+          <textarea name="text" rows="5" placeholder="Paste the job description" class="field"></textarea>
+          <p class="text-sm bad" data-error role="alert"></p>
+          <div class="flex items-center justify-between gap-2">
+            <a data-open-posting target="_blank" rel="noopener" class="btn btn-quiet -ml-3">Open posting</a>
+            <button type="submit" class="btn btn-primary">Read it</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="block py-6 grid gap-4">
+        <div class="flex items-end justify-between gap-4">
+          <div>
+            <h2 class="eyebrow">How well it fits</h2>
+            <p class="mt-1 flex items-baseline gap-2"><span id="d-score" class="score-big"></span><span id="d-fit" class="font-medium"></span></p>
+          </div>
+          <p id="d-guess" class="text-xs muted text-right max-w-[14rem]" hidden>A first guess from the title. Paste the description for a real score.</p>
+        </div>
+        <ul id="d-reasons" class="grid gap-2.5 text-sm"></ul>
+        <dl class="grid grid-cols-[8.5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-1.5 text-sm">
+          <dt class="muted">Salary</dt><dd><input data-field="salary" class="inline" placeholder="Not stated in the posting"></dd>
+          <dt class="muted">Type</dt><dd id="d-type"></dd>
+        </dl>
+      </section>
+
       <section class="block py-6 grid gap-3">
         <h2 class="eyebrow">Application</h2>
         <dl class="grid grid-cols-[8.5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-1.5 text-sm">
@@ -220,16 +165,6 @@
         <div class="grid gap-1">
           <h2 class="eyebrow">The company</h2>
           <textarea data-field="companyAbout" class="inline leading-relaxed" placeholder="What the company does"></textarea>
-        </div>
-        <div class="grid gap-5 sm:grid-cols-2">
-          <div class="grid gap-1 content-start">
-            <h2 class="eyebrow"><span class="good">Pros</span></h2>
-            <textarea data-field="pros" class="inline text-sm leading-relaxed" placeholder="What speaks for it"></textarea>
-          </div>
-          <div class="grid gap-1 content-start">
-            <h2 class="eyebrow"><span class="bad">Cons</span></h2>
-            <textarea data-field="cons" class="inline text-sm leading-relaxed" placeholder="What speaks against it"></textarea>
-          </div>
         </div>
       </section>
 
@@ -276,52 +211,13 @@
           <h2 class="eyebrow">Motivation letter</h2>
           <p id="d-letter-info" class="text-sm muted"></p>
         </div>
-        <button type="button" id="d-letter" class="btn btn-secondary">Open</button>
+        <a id="d-letter" target="_blank" class="btn btn-secondary">Open in new tab</a>
       </section>
     </div>
   </dialog>
 
-  <!-- Letter editor -->
-  <dialog id="letter-dialog" class="w-[min(52rem,calc(100%-2rem))]">
-    <div class="p-5 sm:p-6 grid gap-4">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <h2 class="text-base font-semibold">Motivation letter</h2>
-          <p id="letter-job" class="text-sm muted"></p>
-        </div>
-        <button type="button" data-close class="btn btn-quiet -mr-3">Close</button>
-      </div>
-      <div class="grid gap-2 sm:grid-cols-[9rem_1fr_auto] items-end">
-        <label class="label">Language
-          <select id="letter-lang" class="field"><option>English</option><option>French</option><option>German</option><option>Dutch</option></select></label>
-        <label class="label">Instructions
-          <input id="letter-notes" class="field" placeholder="Optional, for example: mention my NLP thesis"></label>
-        <button id="letter-generate" type="button" class="btn btn-primary">Write draft</button>
-      </div>
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <select id="letter-version" class="field !w-auto !h-8 !py-0 text-sm" aria-label="Version"></select>
-        <span id="letter-state" class="text-sm muted" role="status"></span>
-      </div>
-      <textarea id="letter-text" rows="15" class="field leading-relaxed" placeholder="Write a draft with your local model, then edit it here."></textarea>
-      <div class="flex flex-wrap items-center gap-1" id="revise-bar">
-        <span class="text-sm muted mr-1">Revise</span>
-        <button type="button" class="btn btn-sm btn-quiet" data-revise="Make it about 30 percent shorter. Keep the strongest points.">Shorter</button>
-        <button type="button" class="btn btn-sm btn-quiet" data-revise="Make the tone more formal and professional.">More formal</button>
-        <button type="button" class="btn btn-sm btn-quiet" data-revise="Make it more personal and specific to this company, using details from the posting.">More personal</button>
-        <button type="button" class="btn btn-sm btn-quiet" data-revise="Fix grammar, spelling and awkward phrasing only. Change nothing else.">Fix grammar</button>
-        <input id="revise-custom" class="field !h-8 !py-0 flex-1 min-w-[12rem] text-sm" placeholder="Or describe a change and press Enter">
-      </div>
-      <div class="flex flex-wrap justify-end gap-2">
-        <button id="letter-copy" type="button" class="btn btn-quiet">Copy</button>
-        <a id="letter-txt" class="btn btn-quiet" href="#">TXT</a>
-        <a id="letter-docx" class="btn btn-secondary" href="#">Download Word</a>
-        <button id="letter-save" type="button" class="btn btn-primary">Save</button>
-      </div>
-    </div>
-  </dialog>
-
   <!-- Settings: CV, model, data -->
-  <dialog id="settings-dialog" class="w-[min(30rem,calc(100%-2rem))]">
+  <dialog id="settings-dialog" class="w-[min(32rem,calc(100%-2rem))]">
     <div class="p-5 sm:p-6 grid gap-6">
       <div class="flex items-center justify-between">
         <h2 class="text-base font-semibold">Settings</h2>
@@ -333,6 +229,37 @@
           <p id="cv-state" class="text-sm"></p>
           <label class="btn btn-secondary cursor-pointer">Upload<input type="file" accept=".pdf,.docx,.txt,.md" class="sr-only" data-cv-input></label>
         </div>
+      </section>
+      <form id="you-form" class="grid gap-3">
+        <h3 class="eyebrow">You</h3>
+        <label class="label">Your first name<input name="first_name" class="field" placeholder="Shown to people who send you jobs"></label>
+        <label class="label">Home address<input name="home" class="field" placeholder="Street, town" autocomplete="street-address"></label>
+        <label class="label">Languages you speak<input name="languages" class="field" placeholder="English, French, German"></label>
+        <p class="text-xs muted">Used for distance and fit. The address is looked up once on OpenStreetMap and stays on this computer.</p>
+        <div class="flex justify-end"><button type="submit" class="btn btn-secondary">Save</button></div>
+      </form>
+      <form id="mail-form" class="grid gap-3">
+        <h3 class="eyebrow">Email</h3>
+        <p class="text-sm muted">Shortlist reads this Gmail inbox: jobs people send you land in your list, and mails to and from companies mark jobs as applied, answered or rejected. It only reads, never sends or deletes.</p>
+        <label class="label">Gmail address<input name="mail_address" type="email" class="field" placeholder="yourname.jobs@gmail.com"></label>
+        <label class="label">App password<input name="mail_password" type="password" class="field" autocomplete="new-password" placeholder="16 letters from Google"></label>
+        <p class="text-xs muted">Not your normal password. Turn on 2-Step Verification, then create one at <a class="underline" href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>.</p>
+        <div class="flex items-center justify-between gap-3">
+          <p id="mail-state" class="text-sm" role="status"></p>
+          <div class="flex gap-2">
+            <button type="button" id="mail-check" class="btn btn-quiet">Check now</button>
+            <button type="submit" class="btn btn-secondary">Save</button>
+          </div>
+        </div>
+      </form>
+      <section id="helper-section" class="grid gap-2">
+        <h3 class="eyebrow">Let others send you jobs</h3>
+        <p class="text-sm muted">Send this link to your mother or anyone helping. They open it once, add it to their home screen, and can send you any job link in two taps.</p>
+        <div class="grid grid-cols-[1fr_auto] gap-2">
+          <input id="helper-name" class="field" value="Mama" aria-label="Their name">
+          <button type="button" id="helper-copy" class="btn btn-secondary">Copy link</button>
+        </div>
+        <p id="helper-link" class="mono text-xs muted break-all"></p>
       </section>
       <form id="settings-form" class="grid gap-3">
         <h3 class="eyebrow">Letters</h3>
@@ -348,7 +275,7 @@
         <h3 class="eyebrow">Data</h3>
         <p class="text-sm muted">Everything lives in <code class="mono">shortlist.db</code>. Export it as JSON to move it to another computer.</p>
         <div class="flex flex-wrap items-center gap-2">
-          <a id="export-btn" href="/api/export" download="shortlist-export.json" class="btn btn-secondary">Export</a>
+          <a id="export-btn" href="/api/export" download class="btn btn-secondary">Export</a>
           <label class="btn btn-secondary cursor-pointer">Import<input id="json-input" type="file" accept=".json,application/json" class="sr-only"></label>
           <span id="import-state" class="text-sm" role="status"></span>
         </div>

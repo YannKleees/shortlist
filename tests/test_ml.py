@@ -86,3 +86,32 @@ def test_pros_cons_fallback_is_concrete():
            "languages_required": ["Dutch"], "years_required": None}
     p, c = pros_cons(row)
     assert "Internship" in p and "Dutch" in c and "On site" in c
+
+
+def test_rule_extract_uses_the_title_for_level_and_domain():
+    d = rule_extract("Build NLP models with mentoring from senior data scientists. Our staff of 200 lead the market.", "Data Science Intern")
+    assert d["seniority"] == "intern" and d["domain"] == "data_science"
+    assert rule_extract("You join a friendly team.", "Lead Data Analyst")["seniority"] == "senior"
+    assert rule_extract("Python and SQL.", "Werkstudent Data Science")["job_type"] == "Working student"
+
+
+def test_rule_extract_ignores_years_that_are_not_experience():
+    assert rule_extract("Founded 150 years ago. A 2 year contract.")["years_required"] is None
+    assert rule_extract("Founded 150 years ago. You bring 1-2 years of experience in SQL.")["years_required"] == 1
+    assert rule_extract("3+ years experience with Python.")["years_required"] == 3
+
+
+def test_rule_extract_languages_need_to_be_asked_for():
+    d = rule_extract("We are a Dutch company. Fluent English required. Dutch is a plus.")
+    assert d["languages_required"] == ["English"]
+    d = rule_extract("Fluent Dutch required, German is a plus. Languages: French (a plus).")
+    assert d["languages_required"] == ["Dutch"]
+    assert rule_extract("Sehr gute Deutschkenntnisse.")["languages_required"] == ["German"]
+
+
+def test_salary_is_read_when_the_posting_states_it():
+    from shortlist.extract import salary_text
+    assert salary_text("Salary: EUR 1,500 - 2,000 per month gross.") == "EUR 1,500 - 2,000 per month gross"
+    assert salary_text("We offer 45k EUR per year.") == "45k EUR per year"
+    assert salary_text("A EUR 2 billion company with a EUR 5 lunch voucher.") == ""
+    assert salary_text("Python and SQL.") == ""

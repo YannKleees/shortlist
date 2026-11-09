@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Letter · Shortlist</title>
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="tw-config.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#1d4ed8">
+  <style>
+    #letter-text { min-height: 60vh; font-size: 1rem; line-height: 1.7; padding: 1.25rem 1.5rem; }
+    @media print { header, aside, .no-print { display: none !important; } #letter-text { border: 0; padding: 0; min-height: 0; } }
+  </style>
+</head>
+<body class="font-sans">
+  <header class="border-b" style="border-color: var(--border)">
+    <div class="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center gap-3">
+      <a href="/" class="text-[17px] font-semibold tracking-tight">Shortlist</a>
+      <span class="muted">/</span>
+      <p id="letter-job" class="truncate mr-auto">Motivation letter</p>
+      <span id="letter-state" class="text-sm muted hidden sm:block" role="status"></span>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-4 sm:px-6 py-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <section class="grid gap-4 content-start">
+      <div class="grid gap-2 sm:grid-cols-[9rem_1fr_auto] items-end no-print">
+        <label class="label">Language
+          <select id="letter-lang" class="field"><option>English</option><option>French</option><option>German</option><option>Dutch</option></select></label>
+        <label class="label">Instructions
+          <input id="letter-notes" class="field" placeholder="Optional, for example: mention my NLP thesis"></label>
+        <button id="letter-generate" type="button" class="btn btn-primary">Write draft</button>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-2 no-print">
+        <select id="letter-version" class="field !w-auto !h-8 !py-0 text-sm" aria-label="Version" hidden></select>
+        <span id="letter-state-m" class="text-sm muted sm:hidden" role="status"></span>
+      </div>
+      <textarea id="letter-text" class="field" placeholder="Click Write draft: your local model writes a first version from your CV and this job. Then read it, change what is not you, and save."></textarea>
+      <div class="flex flex-wrap items-center gap-1 no-print" id="revise-bar">
+        <span class="text-sm muted mr-1">Revise</span>
+        <button type="button" class="btn btn-sm btn-quiet" data-revise="Make it about 30 percent shorter. Keep the strongest points.">Shorter</button>
+        <button type="button" class="btn btn-sm btn-quiet" data-revise="Make the tone more formal and professional.">More formal</button>
+        <button type="button" class="btn btn-sm btn-quiet" data-revise="Make it more personal and specific to this company, using details from the posting.">More personal</button>
+        <button type="button" class="btn btn-sm btn-quiet" data-revise="Fix grammar, spelling and awkward phrasing only. Change nothing else.">Fix grammar</button>
+        <input id="revise-custom" class="field !h-8 !py-0 flex-1 min-w-[12rem] text-sm" placeholder="Or describe a change and press Enter">
+      </div>
+      <div class="flex flex-wrap justify-end gap-2 no-print">
+        <button id="letter-copy" type="button" class="btn btn-quiet">Copy</button>
+        <a id="letter-txt" class="btn btn-quiet" href="#">TXT</a>
+        <a id="letter-docx" class="btn btn-secondary" href="#">Download Word</a>
+        <button id="letter-save" type="button" class="btn btn-primary">Save</button>
+      </div>
+    </section>
+
+    <aside class="grid gap-5 content-start text-sm">
+      <div class="grid gap-1">
+        <h2 class="eyebrow">The job</h2>
+        <p id="job-title" class="font-medium"></p>
+        <p id="job-summary" class="leading-relaxed"></p>
+        <a id="job-link" class="underline underline-offset-2 accent" target="_blank" rel="noopener" hidden>Open posting</a>
+      </div>
+      <div class="grid gap-1">
+        <h2 class="eyebrow">Why it fits</h2>
+        <ul id="job-reasons" class="grid gap-1.5"></ul>
+      </div>
+      <p class="muted">Local models still invent things now and then. Read every sentence before you send it.</p>
+    </aside>
+  </main>
+
+  <div id="toast" role="status" popover="manual"></div>
+  <script type="module" src="letter.js"></script>
+</body>
+</html>
