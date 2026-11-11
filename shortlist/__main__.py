@@ -64,7 +64,7 @@ def print_sign_in_link(args):
         return 1
     base = os.environ.get("SHORTLIST_PUBLIC_URL", "").rstrip("/") or f"http://127.0.0.1:{args.port}"
     print(f"{base}/#/join/{db.new_invite(con, user['name'], user['role'], user_id=user['id'])}")
-    print(f"Open it once within {db.INVITE_DAYS} days to sign in as {user['name']}, then set a new password under You.")
+    print(f"Open it once within {db.INVITE_DAYS} days to sign in as {user['name']}, then set a new password under Settings.")
     return 0
 
 

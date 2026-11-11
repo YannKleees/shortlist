@@ -1,4 +1,5 @@
-// Sift: one page app. Routes live in the hash: #/, #/find, #/job/<id>, #/job/<id>/letter, #/you, #/join/<token>.
+// Sift: one page app. Routes live in the hash: #/, #/find, #/calendar, #/mail, #/docs, #/portfolio, #/settings/<part>, #/job/<id>,
+// #/job/<id>/letter, #/join/<token>.
 import { STATUSES, RELATIONS, GROUPS, WORK_SETUPS, sortJobs, isFollowUpDue, todayISO, addDays, searchJobs, nextAction } from "./logic.js";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -35,7 +36,12 @@ const ICONS = {
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>',
   inbox: '<path d="M4 13.5l2.2-7.1A2 2 0 0 1 8.1 5h7.8a2 2 0 0 1 1.9 1.4l2.2 7.1V18a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18z"/><path d="M4 13.5h4.5l1 2h5l1-2H20"/>',
   reply: '<path d="M10 8L5 12.5l5 4.5"/><path d="M5.5 12.5H14a5 5 0 0 1 5 5v1"/>',
+  calendar: '<rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
+  mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M4 7l8 6.5L20 7"/>',
+  docs: '<path d="M7 3.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9.5A1.5 1.5 0 0 1 5.5 19V5A1.5 1.5 0 0 1 7 3.5z"/><path d="M13.5 3.5V8H18M9 12.5h6M9 16h4"/>',
+  gear: '<path d="M4 7h9M19 7h1M4 12h3M13 12h7M4 17h10M20 17h0"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="12" r="2.2"/><circle cx="17" cy="17" r="2.2"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5h4"/>',
+  portfolio: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2" fill="currentColor"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2" fill="currentColor"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2"/>',
 };
 const icon = (name, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
@@ -128,9 +134,12 @@ function transition(update) {
 }
 
 // Deeper screens slide in from the right and back out to the right; tabs move sideways in tab bar order.
-const TAB_ORDER = { jobs: 0, find: 1, inbox: 2, you: 3 };
+const TAB_ORDER = { jobs: 0, find: 1, calendar: 2, mail: 3, inbox: 3, docs: 4, portfolio: 5, you: 6, settings: 6 };
+const wide = () => matchMedia("(min-width: 860px)").matches;
 function setDirection(r) {
-  const now = { depth: r.name === "job" ? (r.sub === "letter" ? 2 : 1) : 0, tab: TAB_ORDER[r.name] ?? 0 };
+  // On a phone a part of Settings is a screen of its own, one step deeper. On a wide screen it sits beside the list.
+  const part = (r.name === "settings" || r.name === "you") && r.id && !wide();
+  const now = { depth: r.name === "job" ? (r.sub === "letter" ? 2 : 1) : part ? 1 : 0, tab: TAB_ORDER[r.name] ?? 0 };
   const was = state.place || now;
   document.documentElement.dataset.nav = now.depth > was.depth ? "forward" : now.depth < was.depth ? "back"
     : now.tab > was.tab ? "right" : now.tab < was.tab ? "left" : "fade";
@@ -155,8 +164,11 @@ async function route() {
   if (r.name === "job") return showJob(r.id);
   // The update itself is synchronous (a skeleton first), so the transition never waits on the network.
   if (r.name === "find" && isOwner()) return transition(() => { renderFind(); });
-  if (r.name === "inbox" && isOwner()) return transition(() => { renderInbox(); });
-  if (r.name === "you") return transition(() => { renderYou().then(() => r.id && $(`#f-${r.id}`)?.setAttribute("open", "")); });
+  if (r.name === "calendar") return transition(() => { renderCalendar(); });
+  if ((r.name === "mail" || r.name === "inbox") && isOwner()) return transition(() => { renderInbox(); });
+  if (r.name === "docs" && isOwner()) return transition(() => { renderDocs(); });
+  if (r.name === "portfolio" && isOwner()) return transition(() => { renderPortfolio(); });
+  if (r.name === "you" || r.name === "settings") return transition(() => { renderYou(r.id || "", state.screen !== "you"); });
   return transition(renderJobs);
 }
 addEventListener("hashchange", route);
@@ -164,39 +176,78 @@ const go = hash => { if (location.hash !== hash) location.hash = hash; else rout
 
 // The frame around every screen
 
+// The notch and the tab bar are built once and stay: only the screen between them is replaced. So nothing in the bars
+// flickers or shifts, and the marker of the screen you are on can slide from one name to the next.
+function shell() {
+  const owner = isOwner(), newFinds = state.status?.finds?.new || 0;
+  const badge = key => key === "inbox" ? `<span class="badge num" data-badge ${state.unseen ? "" : "hidden"}>${state.unseen}</span>`
+    : key === "find" ? `<span class="nav-count num" data-count-find ${newFinds ? "" : "hidden"}>${newFinds}</span>` : "";
+  const nav = (key, href, label) => `<a data-nav="${key}" href="${href}">${label}${badge(key)}</a>`;
+  const ic = (key, href, label, cls = "") => `<a class="notch-icon ${cls}" data-nav="${key}" href="${href}" aria-label="${label}" title="${label}">${icon(key === "you" ? "gear" : key)}</a>`;
+  const tab = (key, href, label, name) => `<a class="tab" data-nav="${key}" href="${href}">${icon(name)}<span>${label}</span>${badge(key)}</a>`;
+  return `
+    <header class="topbar"><div class="wrap">
+      <a class="brand" href="#/" aria-label="Sift, your jobs">${BRAND_MARK}<span>Sift</span></a>
+      <span class="notch-live" role="status" ${state.live ? "" : "hidden"}>${esc(state.live || "")}</span>
+      <nav class="nav-desktop" aria-label="Main"><span class="nav-pill" aria-hidden="true"></span>${nav("jobs", "#/", "Jobs")}${owner ? nav("find", "#/find", "Find") : ""}${nav("calendar", "#/calendar", "Calendar")}${owner ? nav("inbox", "#/mail", "Mail") + nav("docs", "#/docs", "Documents") + nav("portfolio", "#/portfolio", "Portfolio") : ""}</nav>
+      ${owner ? ic("docs", "#/docs", "Documents", "mob-only") + ic("portfolio", "#/portfolio", "Portfolio", "mob-only") : ""}
+      ${ic("you", "#/settings", "Settings")}
+      <button class="notch-add desk-only" type="button" data-add aria-label="Add a job">${icon("plus")}<span>Add job</span></button>
+    </div></header>
+    <main class="wrap screen"></main>
+    <nav class="tabbar" aria-label="Main">
+      ${tab("jobs", "#/", "Jobs", "jobs")}
+      ${owner ? tab("find", "#/find", "Find", "find") : ""}
+      <button class="tab-add" type="button" data-add aria-label="Add a job">${icon("plus")}</button>
+      ${tab("calendar", "#/calendar", "Calendar", "calendar")}
+      ${owner ? tab("inbox", "#/mail", "Mail", "mail") : ""}
+    </nav>`;
+}
+
 function frame(active, body) {
   state.ctl.abort(); // listeners of the previous screen go with it
   (state.maps || []).forEach(m => m.remove());
   state.maps = [];
   state.ctl = new AbortController();
   state.screen = active;
-  const newFinds = state.status?.finds?.new || 0;
-  const badge = key => key === "inbox" ? `<span class="badge num" data-badge ${state.unseen ? "" : "hidden"}>${state.unseen}</span>`
-    : key === "find" ? `<span class="nav-count num" data-count-find ${newFinds ? "" : "hidden"}>${newFinds}</span>` : "";
-  const nav = (key, href, label) => `<a href="${href}" ${active === key ? 'aria-current="page"' : ""}>${label}${badge(key)}</a>`;
-  const tab = (key, href, label, ic) => `<a class="tab" href="${href}" ${active === key ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label}</span>${badge(key)}</a>`;
-  const owner = isOwner();
-  const inbox = owner && (state.status?.mail?.ready || state.mails.length > 0);  // no Gmail, no Inbox tab
-  $("#root").innerHTML = `
-    <header class="topbar"><div class="wrap">
-      <a class="brand" href="#/">${BRAND_MARK}Sift</a>
-      <span class="notch-live small" role="status" ${state.live ? "" : "hidden"}>${esc(state.live || "")}</span>
-      <nav class="nav-desktop" aria-label="Main">${nav("jobs", "#/", "Jobs")}${owner ? nav("find", "#/find", "Find") : ""}${inbox ? nav("inbox", "#/inbox", "Inbox") : ""}${nav("you", "#/you", owner ? "You" : "Account")}</nav>
-      <button class="notch-add desk-only" type="button" data-add>${icon("plus")}Add job</button>
-    </div></header>
-    <main class="wrap screen">${body}</main>
-    <nav class="tabbar" aria-label="Main">
-      ${tab("jobs", "#/", "Jobs", "jobs")}
-      ${owner ? tab("find", "#/find", "Find", "find") : ""}
-      <button class="tab-add" type="button" data-add aria-label="Add a job">${icon("plus")}</button>
-      ${inbox ? tab("inbox", "#/inbox", "Inbox", "inbox") : ""}
-      ${tab("you", "#/you", owner ? "You" : "Account", "you")}
-    </nav>`;
-  $$("[data-add]").forEach(b => b.addEventListener("click", () => openAdd()));
+  const root = $("#root"), role = state.user?.role || "";
+  if (root.dataset.shell !== role || !$(".topbar", root)) {
+    root.dataset.shell = role;
+    root.innerHTML = shell();
+    $$("[data-add]", root).forEach(b => b.addEventListener("click", () => openAdd()));
+  }
+  const main = document.createElement("main");
+  main.className = "wrap screen";
+  main.innerHTML = body;
+  $("main.screen", root).replaceWith(main);
+  $$("[data-nav]", root).forEach(a => a.dataset.nav === active ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
+  placePill();
   const dir = document.documentElement.dataset.nav;
-  if (!document.startViewTransition && !reduced() && dir && dir !== "fade" && state.painted) $("main.screen").dataset.enter = dir;
+  if (!document.startViewTransition && !reduced() && dir && dir !== "fade" && state.painted) main.dataset.enter = dir;
   window.scrollTo(0, 0);
 }
+
+// The marker behind the name of the screen you are on. It moves with a transition, so a second click on the way
+// simply sends it somewhere else.
+function placePill() {
+  const nav = $(".nav-desktop"), pill = $(".nav-pill");
+  if (!nav || !pill) return;
+  const a = $('[aria-current="page"]', nav), first = !pill.dataset.placed || pill.style.opacity === "0";
+  if (!a) { pill.style.opacity = "0"; return; }
+  if (first) pill.style.transition = "none"; // it appears in place; it only slides between two names
+  pill.style.width = `${a.offsetWidth}px`;
+  pill.style.transform = `translateX(${a.offsetLeft}px)`;
+  pill.style.opacity = "1";
+  if (first) { pill.getBoundingClientRect(); pill.style.transition = ""; pill.dataset.placed = "1"; }
+  // A slide that the browser dropped (it happens when a screen change is cut short) must not leave the marker behind.
+  clearTimeout(placePill.timer);
+  placePill.timer = setTimeout(() => {
+    if (!a.isConnected || Math.abs(pill.getBoundingClientRect().left - a.getBoundingClientRect().left) < 1.5) return;
+    pill.style.transition = "none"; pill.getBoundingClientRect(); pill.style.transition = "";
+  }, 460);
+}
+addEventListener("resize", placePill);
+document.fonts?.ready.then(placePill);
 
 // What is going on right now, said in the notch: it grows to hold the words and shrinks back when they go.
 function setLive(text = "") {
@@ -209,6 +260,7 @@ function setLive(text = "") {
 function paintFindCount() {
   const n = state.status?.finds?.new || 0;
   $$("[data-count-find]").forEach(el => { el.textContent = n; el.hidden = !n; });
+  placePill(); // the name got wider or narrower
 }
 
 // Small motion helpers
@@ -412,7 +464,7 @@ function onboarding() {
       <li><span>Upload your CV, so every job gets a fit score and letters use your real experience.
         <label class="btn btn-sm btn-secondary" style="margin-top:8px;cursor:pointer">Upload CV<input type="file" accept=".pdf,.docx,.tex,.zip,.txt,.md" class="sr" data-onboard-cv></label></span></li>
       <li><span>Add a job: tap ${icon("plus").replace("<svg", '<svg style="width:16px;height:16px;vertical-align:-2px"')} and paste a link.</span></li>
-      <li><span>Invite your family under <a href="#/you" style="color:var(--accent)">You</a>, so they can send you jobs.</span></li>
+      <li><span>Invite your family under <a href="#/settings/family" class="link">Settings</a>, so they can send you jobs.</span></li>
     </ol></div>`;
 }
 
@@ -523,7 +575,7 @@ async function markSeen(j) {
 function jobMailBody(j) {
   const list = j.mails;
   if (!list) return '<div class="skeleton" style="height:60px"></div>';
-  if (!list.length) return `<p class="small muted">${state.status?.mail?.ready ? "No mail with this company yet. Sift checks your inbox every 10 minutes." : 'Connect your Gmail under <a href="#/you/mail" style="color:var(--accent)">You</a> and replies from this company show up here.'}</p>`;
+  if (!list.length) return `<p class="small muted">${state.status?.mail?.ready ? "No mail with this company yet. Sift checks your inbox every 10 minutes." : 'Connect your Gmail under <a href="#/settings/mail" class="link">Settings</a> and replies from this company show up here.'}</p>`;
   return list.map(m => {
     const who = m.kind === "sent" ? "You" : esc(m.senderName || m.sender);
     const reply = m.kind !== "sent" && m.sender ? `mailto:${encodeURIComponent(m.sender)}?subject=${encodeURIComponent(/^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`)}` : "";
@@ -538,28 +590,184 @@ function jobMailBody(j) {
   }).join("");
 }
 
+const MAIL_FILTERS = [["all", "All", () => true], ["reply", "Replies", m => m.kind === "reply" || m.kind === "confirmation"],
+  ["interview", "Interviews", m => m.kind === "interview"], ["rejection", "Rejections", m => m.kind === "rejection"], ["sent", "You wrote", m => m.kind === "sent"]];
+
 async function renderInbox() {
   const ready = state.status?.mail?.ready;
   frame("inbox", `<div class="screen-head" style="display:flex;align-items:end;justify-content:space-between;gap:12px">
-      <div><h1 class="title-xl">Inbox</h1><p class="muted">Replies from companies, read from your Gmail.</p></div>
+      <div><h1 class="title-xl">Mail</h1><p class="muted">Everything about your applications, read from your Gmail.</p></div>
       ${ready ? `<button class="btn btn-secondary btn-sm" type="button" data-check-mail>Check now</button>` : ""}</div>
-    ${ready ? "" : `<div class="panel stack" style="margin-bottom:14px"><p class="title-md">Connect your Gmail</p>
-      <p class="small muted">Then every reply, interview invitation and rejection lands here and on the job, and your phone gets a notification. Sift only reads your mail.</p>
-      <a class="btn btn-primary" href="#/you/mail">Connect Gmail</a></div>`}
+    ${ready ? "" : `<div class="sec stack" style="margin-bottom:14px"><p class="title-md">Connect your Gmail</p>
+      <p class="small muted">Then every reply, interview invitation and rejection lands here, on the job and in the calendar, and your phone gets a notification. Sift only reads your mail.</p>
+      <a class="btn btn-primary" href="#/settings/mail" style="justify-self:start">Connect Gmail</a></div>`}
+    <div class="chips" id="mail-filters" role="tablist" aria-label="Kind of mail"></div>
     <div id="inbox" class="mail-list">${'<div class="skeleton"></div>'.repeat(3)}</div>`);
   $("[data-check-mail]")?.addEventListener("click", async e => { e.currentTarget.disabled = true; await checkMail(); renderInbox(); }, { signal: state.ctl.signal });
-  try { await loadInbox(); } catch (ex) { toast(ex.message); }
-  const box = $("#inbox");
+  let all = [];
+  try { await loadInbox(); all = (await api("/api/mails?all=true")).mails; } catch (ex) { toast(ex.message); }
+  const box = $("#inbox"), bar = $("#mail-filters");
   if (!box) return;
-  box.classList.add("stagger");
-  box.innerHTML = state.mails.length ? state.mails.map((m, i) => `<a class="mail-item ${m.seen ? "" : "unseen"}" href="#/job/${encodeURIComponent(m.jobId)}" data-job="${esc(m.jobId)}" style="--i:${i}">
+  const paint = () => {
+    const key = state.mailFilter || "all", test = MAIL_FILTERS.find(f => f[0] === key)[2];
+    bar.innerHTML = all.length ? MAIL_FILTERS.map(([k, label, t]) => { const n = all.filter(t).length;
+      return n || k === "all" ? `<button class="chip" type="button" role="tab" data-filter="${k}" aria-selected="${k === key}">${label}<span class="num">${n}</span></button>` : ""; }).join("") : "";
+    const list = all.filter(test);
+    box.innerHTML = list.length ? list.map((m, i) => `<a class="mail-item ${m.seen || m.kind === "sent" ? "" : "unseen"}" href="#/job/${encodeURIComponent(m.jobId)}" data-job="${esc(m.jobId)}" style="--i:${i}">
       <span style="min-width:0;display:grid;gap:2px">
         <span class="mail-head"><b>${esc(m.company || "Company")}</b>${mailTag(m)}<span class="when num">${fmt(m.date)}</span></span>
         <span class="mail-subject">${esc(m.subject || "(no subject)")}</span>
         ${m.body ? `<span class="small muted clamp2">${esc(m.body)}</span>` : ""}
       </span></a>`).join("")
-    : `<div class="empty"><p class="title-md">No replies yet</p><p class="muted">When a company answers, it shows up here.</p></div>`;
-  $$("[data-job]", box).forEach(a => a.addEventListener("click", () => { state.openMail = true; }));
+      : `<div class="empty"><p class="title-md">${all.length ? "Nothing of this kind" : "No mail yet"}</p><p class="muted">${all.length ? "Pick another kind above." : "When you apply by mail or a company answers, it shows up here."}</p></div>`;
+    $$("[data-job]", box).forEach(a => a.addEventListener("click", () => { state.openMail = true; }));
+  };
+  box.classList.add("stagger");
+  bar.addEventListener("click", e => { const b = e.target.closest("[data-filter]"); if (b) { state.mailFilter = b.dataset.filter; paint(); } });
+  paint();
+}
+
+// Calendar: what happened and what is planned, on a month and as a list. The people who help see it too, without the words of the mails.
+const CAL_KIND = { applied: "Applied", sent: "You wrote", reply: "Reply", invite: "Interview invitation", interview: "Interview", call: "Call",
+  rejection: "Rejection", offer: "Offer", followup: "Follow up due", deadline: "Deadline to apply" };
+const monthOf = iso => iso.slice(0, 7);
+const monthName = ym => new Date(ym + "-15T12:00:00").toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+const shiftMonth = (ym, by) => { const d = new Date(ym + "-15T12:00:00"); d.setMonth(d.getMonth() + by); return d.toISOString().slice(0, 7); };
+const dayName = iso => new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+const calMark = k => `<i class="cm ${k}" aria-hidden="true"></i>`;
+
+async function renderCalendar() {
+  const owner = isOwner();
+  if (state.screen !== "calendar") frame("calendar", `<header class="screen-head"><h1 class="title-xl">Calendar</h1></header><div class="skeleton" style="height:320px"></div>`);
+  let d;
+  try { d = await api("/api/calendar"); } catch (ex) { toast(ex.message); return; }
+  if (parseRoute().name !== "calendar") return;
+  const cal = state.cal = { month: monthOf(d.today), day: null, ...(state.cal || {}), entries: d.entries, today: d.today };
+  const next = d.entries.find(e => e.date >= d.today && ["interview", "call", "deadline", "followup"].includes(e.kind));
+  frame("calendar", `
+    <header class="screen-head" style="display:flex;align-items:end;justify-content:space-between;gap:12px">
+      <div><h1 class="title-xl">Calendar</h1>
+        <p class="muted">${next ? `Next: ${esc(CAL_KIND[next.kind].toLowerCase())}${next.company ? ` at ${esc(next.company)}` : ""}, ${esc(dayName(next.date))}${next.time ? ` at ${next.time}` : ""}.`
+          : owner ? "Applications, answers and interviews, as they happen." : `What happens in ${esc(ownerName())}'s job search.`}</p></div>
+      ${owner ? `<button class="btn btn-secondary btn-sm" type="button" data-plan>${icon("plus")}Add</button>` : ""}</header>
+    <div class="cal-layout"><section class="cal" id="cal"></section><section id="agenda" class="agenda"></section></div>`);
+  $("[data-plan]")?.addEventListener("click", () => openPlan());
+  $("#cal").addEventListener("click", e => {
+    const nav = e.target.closest("[data-month]"), day = e.target.closest("[data-day]");
+    if (nav) { cal.month = nav.dataset.month === "today" ? monthOf(cal.today) : shiftMonth(cal.month, +nav.dataset.month); cal.day = null; paintCalendar(+nav.dataset.month || 0); }
+    if (day) { cal.day = cal.day === day.dataset.day ? null : day.dataset.day; paintCalendar(); }
+  });
+  $("#agenda").addEventListener("click", e => {
+    const b = e.target.closest("[data-plan-job]");
+    if (b) { e.preventDefault(); openPlan(b.dataset.planJob); }
+    else if (e.target.closest("[data-mail]")) state.openMail = true;
+  });
+  paintCalendar();
+}
+
+function paintCalendar(dir = 0) {
+  const cal = state.cal, box = $("#cal"), agenda = $("#agenda");
+  if (!box) return;
+  const byDay = {};
+  for (const e of cal.entries) (byDay[e.date] ||= []).push(e);
+  const first = new Date(cal.month + "-01T12:00:00"), lead = (first.getDay() + 6) % 7;  // weeks start on Monday
+  const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(`<span class="cal-day out"></span>`);
+  for (let n = 1; n <= days; n++) {
+    const iso = `${cal.month}-${String(n).padStart(2, "0")}`, list = byDay[iso] || [];
+    const kinds = [...new Set(list.map(e => e.kind))];
+    cells.push(`<button class="cal-day ${iso === cal.today ? "today" : ""} ${list.length ? "has" : ""}" type="button" data-day="${iso}" aria-pressed="${cal.day === iso}"
+      aria-label="${esc(dayName(iso))}${list.length ? `, ${list.map(e => CAL_KIND[e.kind]).join(", ")}` : ""}"><b class="num">${n}</b>
+      <span class="cal-marks">${kinds.slice(0, 3).map(calMark).join("")}${kinds.length > 3 ? `<i class="more num">+${kinds.length - 3}</i>` : ""}</span></button>`);
+  }
+  box.innerHTML = `<div class="cal-bar"><h2 class="title-md">${monthName(cal.month)}</h2>
+      <span class="cal-nav">${cal.month === monthOf(cal.today) ? "" : `<button class="btn btn-sm btn-quiet" type="button" data-month="today">Today</button>`}
+        <button class="icon-btn" type="button" data-month="-1" aria-label="Month before">${icon("back")}</button>
+        <button class="icon-btn flip" type="button" data-month="1" aria-label="Month after">${icon("back")}</button></span></div>
+    <div class="cal-week">${["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(x => `<span>${x}</span>`).join("")}</div>
+    <div class="cal-grid" ${dir ? `data-enter="${dir > 0 ? "next" : "prev"}"` : ""}>${cells.join("")}</div>
+    <ul class="cal-key">${["applied", "reply", "interview", "rejection", "followup"].map(k => `<li>${calMark(k)}${{ applied: "You applied or wrote", reply: "They answered", interview: "Interview", rejection: "Rejection", followup: "Planned" }[k]}</li>`).join("")}</ul>`;
+
+  const row = e => {
+    const owner = isOwner();
+    return `<a class="ag-row" href="#/job/${encodeURIComponent(e.jobId)}" ${e.mailId ? "data-mail" : ""}>
+      ${calMark(e.kind)}<span class="ag-what"><span><b>${CAL_KIND[e.kind]}</b> · ${esc(e.company || "Company unknown")}${e.role ? `<span class="muted"> · ${esc(e.role)}</span>` : ""}</span>
+        ${e.text ? `<span class="small muted clamp2">${esc(e.text)}</span>` : ""}
+        ${owner && e.kind === "invite" ? `<button class="btn btn-sm btn-secondary" type="button" data-plan-job="${esc(e.jobId)}" style="margin-top:6px;justify-self:start">Set the interview date</button>` : ""}</span>
+      <span class="ag-time num">${e.time || ""}</span></a>`;
+  };
+  const group = list => {
+    const days = [...new Set(list.map(e => e.date))];
+    return days.map(day => `<div class="ag-day"><h3 class="label ${day === cal.today ? "now" : ""}">${day === cal.today ? "Today · " : ""}${esc(dayName(day))}</h3>${list.filter(e => e.date === day).map(row).join("")}</div>`).join("");
+  };
+  const inMonth = cal.entries.filter(e => monthOf(e.date) === cal.month);
+  if (cal.day) {
+    const list = byDay[cal.day] || [];
+    agenda.innerHTML = list.length ? group(list) : `<div class="ag-day"><h3 class="label">${esc(dayName(cal.day))}</h3><p class="muted" style="padding:14px 0">Nothing on this day.</p></div>`;
+  } else {
+    const ahead = cal.month === monthOf(cal.today) ? cal.entries.filter(e => e.date >= cal.today).slice(0, 6) : [];
+    const past = inMonth.filter(e => !ahead.includes(e)).reverse();
+    agenda.innerHTML = (ahead.length ? `<h2 class="label ag-title">Coming up</h2>${group(ahead)}` : "")
+      + (past.length ? `<h2 class="label ag-title">${ahead.length ? "Earlier this month" : esc(monthName(cal.month))}</h2>${group(past)}` : "")
+      || `<div class="empty"><p class="title-md">Nothing in ${esc(monthName(cal.month))}</p>
+          <p class="muted">${isOwner() ? "When you apply, a company answers or you plan an interview, it shows up here on its day." : "Applications, answers and interviews show up here on their day."}</p></div>`;
+  }
+}
+
+// Plan something with a date: an interview or a call. It lands on the job's timeline and in the calendar, and you are reminded the day before.
+function openPlan(jobId = "") {
+  const jobs = state.jobs.filter(j => !["Rejected", "Withdrawn"].includes(j.status));
+  if (!jobs.length) return toast("Save a job first, then plan an interview for it.");
+  openSheet(`
+    <h2 id="sheet-title" class="title-lg">Add to the calendar</h2>
+    <form class="form" id="plan-form">
+      <label class="field-label">Job<select class="field" name="job">${jobs.map(j => `<option value="${esc(j.id)}" ${j.id === jobId ? "selected" : ""}>${esc(j.company || "Company unknown")}${j.role ? ` · ${esc(j.role)}` : ""}</option>`).join("")}</select></label>
+      <label class="field-label">What<select class="field" name="kind"><option>Interview</option><option>Call</option></select></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label class="field-label">Day<input class="field" type="date" name="date" required value="${state.cal?.day || todayISO()}"></label>
+        <label class="field-label">Time<input class="field" type="time" name="time"></label></div>
+      <label class="field-label">Note<input class="field" name="note" placeholder="For example: video call with the team lead" autocomplete="off"></label>
+      <p class="error" data-error role="alert"></p>
+      <button class="btn btn-primary btn-lg" type="submit">Add</button>
+    </form>`, sh => {
+    const f = $("#plan-form", sh);
+    f.addEventListener("submit", async e => {
+      e.preventDefault();
+      const text = [f.time.value, f.note.value.trim()].filter(Boolean).join(" · ");
+      try {
+        await api(`/api/jobs/${encodeURIComponent(f.job.value)}/events`, { method: "POST", json: { kind: f.kind.value, date: f.date.value, text } });
+        if (f.kind.value === "Interview") { const j = state.jobs.find(x => x.id === f.job.value); if (j && ["To apply", "Applied", "Waiting"].includes(j.status)) await api(`/api/jobs/${encodeURIComponent(j.id)}`, { method: "PATCH", json: { status: "Interview" } }); }
+        closeSheet(); toast(`${f.kind.value} added for ${fmt(f.date.value)}`);
+        if (state.cal) { state.cal.month = monthOf(f.date.value); state.cal.day = f.date.value; }
+        loadJobs();
+        if (parseRoute().name === "calendar") renderCalendar();
+      } catch (ex) { $("[data-error]", f).textContent = ex.message; }
+    });
+  });
+}
+
+// Documents: your CV, your projects and every letter, in one place.
+async function renderDocs() {
+  if (state.screen !== "docs") frame("docs", `<header class="screen-head"><h1 class="title-xl">Documents</h1></header>${'<div class="skeleton" style="height:60px;margin-top:10px"></div>'.repeat(3)}`);
+  let letters = [];
+  try { await loadStatus(); letters = await api("/api/letters"); } catch (ex) { toast(ex.message); }
+  if (parseRoute().name !== "docs") return;
+  const st = state.status || {};
+  const open = state.jobs.filter(j => !["Rejected", "Withdrawn"].includes(j.status));
+  frame("docs", `<header class="screen-head"><h1 class="title-xl">Documents</h1><p class="muted">Your CV and your letters. What your CV, GitHub and LinkedIn show together is under <a class="link" href="#/portfolio">Portfolio</a>.</p></header>
+    ${fold("f-cv", "CV", st.cv ? (st.review ? `${st.review.score} / 100` : esc(st.cv.filename)) : "Not uploaded", cvBody(st), true)}
+    <section class="sec" style="margin-top:28px"><h2 class="label">Motivation letters</h2>
+      ${letters.length ? `<div class="list">${letters.map(l => `<a class="doc-row" href="#/job/${encodeURIComponent(l.jobId)}/letter">
+          <span class="who"><span class="company">${esc(l.role || "Letter")}</span><span class="role">${esc(l.company || "Company unknown")}</span>
+            <span class="small muted clamp2">${esc(l.start)}</span></span>
+          <span class="meta num">${esc(l.language)} · ${l.words} words · ${fmt(l.updatedAt)}</span></a>`).join("")}</div>`
+        : `<p class="muted" style="margin-bottom:14px">No letters yet. A letter is written from your CV and the posting, and you can change every word.</p>`}
+      ${open.length ? `<form class="doc-new" id="letter-new"><select class="field" name="job" aria-label="Job">${open.map(j => `<option value="${esc(j.id)}">${esc(j.company || "Company unknown")}${j.role ? ` · ${esc(j.role)}` : ""}</option>`).join("")}</select>
+        <button class="btn btn-secondary" type="submit">${icon("letter")}Write a letter</button></form>` : ""}
+    </section>`);
+  $("#letter-new")?.addEventListener("submit", e => { e.preventDefault(); go(`#/job/${encodeURIComponent(e.target.job.value)}/letter`); });
+  bindYou();
 }
 
 async function loadJobs() {
@@ -623,11 +831,11 @@ function paintFind() {
   const want = d.ready ? `${d.roles.join(", ")}${d.where.length ? ` in ${d.where.join(", ")}` : ""}` : "";
   frame("find", `
     <header class="screen-head"><h1 class="title-xl">Find</h1>
-      <p class="muted">${d.ready ? `${esc(want)}. <a class="link" href="#/you/profile">Change</a>` : "Say which jobs you want, and Sift looks for them and tells you how each one fits."}</p></header>
+      <p class="muted">${d.ready ? `${esc(want)}. <a class="link" href="#/settings/profile">Change</a>` : "Say which jobs you want, and Sift looks for them and tells you how each one fits."}</p></header>
     ${d.ready ? `<div class="find-bar"><span class="small muted" id="find-note">${findNote()}</span>
         <button class="btn btn-secondary btn-sm" type="button" data-search>Search again</button></div>
       <div id="finds" class="list">${findList()}</div>${findSources()}`
-    : `<a class="btn btn-primary" href="#/you/profile">Say what you are looking for</a>`}`);
+    : `<a class="btn btn-primary" href="#/settings/profile">Say what you are looking for</a>`}`);
   $("[data-search]")?.addEventListener("click", searchFinds);
   $("#finds")?.addEventListener("click", onFindClick);
 }
@@ -900,7 +1108,7 @@ async function jobTravel(j) {
   const box = $("#travel");
   if (!box || state.job?.id !== j.id || !t.place) return;
   if (!t.home || !Object.keys(t.modes).length) {
-    if (!t.home && isOwner()) { box.hidden = false; box.className = "callout small"; box.innerHTML = `Add your home address under <a href="#/you/profile" style="color:var(--accent-ink);text-decoration:underline">You</a> to see how long it takes to get there.`; }
+    if (!t.home && isOwner()) { box.hidden = false; box.className = "callout small"; box.innerHTML = `Add your home address under <a href="#/settings/profile" style="color:var(--accent-ink);text-decoration:underline">You</a> to see how long it takes to get there.`; }
     return;
   }
   let mode = t.modes.car ? "car" : Object.keys(t.modes)[0];
@@ -1284,7 +1492,7 @@ async function renderLetter(id) {
           <label class="field-label">Anything to stress?<input class="field" id="l-notes" placeholder="For example: my NLP thesis"></label>
         </div>
         <button class="btn btn-primary btn-lg" type="button" id="l-write">${current ? "Write a new draft" : "Write the letter"}</button>
-        ${!state.status?.cv ? `<p class="hint">Upload your CV under <a href="#/you" style="color:var(--accent)">You</a> first.</p>` : ""}
+        ${!state.status?.cv ? `<p class="hint">Upload your CV under <a href="#/docs" class="link">Documents</a> first.</p>` : ""}
         ${job.hasText === false ? `<p class="hint">The job text is missing, so the letter can only use the title. Paste the text on the job page first.</p>` : ""}
       ${current ? "</div></details>" : "</div>"}
       <div id="l-editor"></div>
@@ -1353,31 +1561,131 @@ async function renderLetter(id) {
 const fold = (id, title, note, body, open = false) => `<details class="fold" id="${id}" ${open ? "open" : ""}>
   <summary><span class="s-title">${title}</span><span class="s-note">${note}</span>${icon("chev")}</summary><div class="fold-body">${body}</div></details>`;
 
-async function renderYou() {
-  const owner = isOwner();
-  if (state.screen !== "you") frame("you", `<div class="screen-head"><h1 class="title-xl">${esc(state.user.name)}</h1></div>${'<div class="skeleton" style="height:60px;margin-top:10px"></div>'.repeat(5)}`);
-  let me = {}, people = [];
-  try { [me, people] = await Promise.all([api("/api/me"), owner ? api("/api/people") : []]); if (owner) await loadStatus(); } catch (ex) { toast(ex.message); }
-  const st = state.status || {};
+function settingsParts(me, people, st) {
   const pushOn = me.push && window.Notification?.permission === "granted";
-  const body = owner ? [
-    fold("f-cv", "Your CV", st.cv ? (st.review ? `${st.review.score} / 100` : esc(st.cv.filename)) : "Not uploaded", cvBody(st), !st.cv),
-    fold("f-github", "GitHub", st.github?.user ? plural(st.github.projects.length, "project") : "Not added", githubBody(st)),
-    fold("f-profile", "What you are looking for", st.profile?.roles?.length ? esc(st.profile.roles.join(", ")) : "Tell Sift", profileBody(st), !st.profile?.roles?.length),
-    fold("f-family", "Family", people.length > 1 ? plural(people.length - 1, "person", "people") : "Invite someone", familyBody(people)),
-    `<p class="label" style="margin:26px 4px 10px">Settings</p>`,
-    fold("f-mail", "Email", st.mail?.ready ? (st.mail.last?.ok === false ? "Problem" : "Connected") : "Not connected", mailBody(st)),
-    fold("f-push", "Notifications", pushOn ? "On" : "Off", pushBody(pushOn)),
-    fold("f-ai", "Letters", esc(st.llm?.provider === "claude" ? "Claude" : "On this computer"), aiBody(st)),
-    fold("f-account", "Account", esc(me.name || ""), accountBody(me, true)),
-  ].join("") : [
-    fold("f-push", "Notifications", pushOn ? "On" : "Off", pushBody(pushOn), true),
-    fold("f-account", "Account", esc(me.name || ""), accountBody(me, false)),
-  ].join("");
-  frame("you", `<div class="screen-head"><h1 class="title-xl">${esc(state.user.name)}</h1>
-    ${owner ? "" : `<p class="muted">You help ${esc(ownerName())} find a job. Thank you.</p>`}</div>
-    ${installHint()}${body}`);
+  const push = ["push", "Notifications", pushOn ? "On" : "Off", () => pushBody(pushOn, me)];
+  return isOwner() ? [
+    ["profile", "What you are looking for", st.profile?.roles?.length ? esc(st.profile.roles.join(", ")) : "Tell Sift", () => profileBody(st)],
+    ["family", "Family", people.length > 1 ? plural(people.length - 1, "person", "people") : "Invite someone", () => familyBody(people)],
+    ["mail", "Email", st.mail?.ready ? (st.mail.last?.ok === false ? "Problem" : "Connected") : "Not connected", () => mailBody(st)],
+    push,
+    ["ai", "Letters", esc(st.llm?.provider === "claude" ? "Claude" : "On this computer"), () => aiBody(st)],
+    ["account", "Account", esc(me.name || ""), () => accountBody(me, true)],
+  ] : [push, ["account", "Account", esc(me.name || ""), () => accountBody(me, false)]];
+}
+
+// Settings: a list of parts and one part open. Side by side on a wide screen; on a phone the list is the screen and a
+// part opens as the next screen.
+async function renderYou(open = "", reload = true) {
+  const owner = isOwner();
+  if (state.screen !== "you") frame("you", `<div class="screen-head"><h1 class="title-xl">Settings</h1></div>${'<div class="skeleton" style="height:60px;margin-top:10px"></div>'.repeat(5)}`);
+  if (reload || !state.you) {
+    let me = state.you?.me || {}, people = state.you?.people || [];
+    try { [me, people] = await Promise.all([api("/api/me"), owner ? api("/api/people") : []]); if (owner) await loadStatus(); } catch (ex) { toast(ex.message); }
+    state.you = { me, people };
+    if (!["you", "settings"].includes(parseRoute().name)) return; // you moved on while it loaded
+  }
+  const parts = settingsParts(state.you.me, state.you.people, state.status || {});
+  const cur = parts.find(x => x[0] === open) || parts[0];
+  frame("you", `<div class="screen-head"><h1 class="title-xl">Settings</h1>
+    <p class="muted">${owner ? `Signed in as ${esc(state.user.name)}.` : `You help ${esc(ownerName())} find a job. Thank you.`}</p></div>
+    ${installHint()}
+    <div class="set" ${open === cur[0] ? "data-open" : ""}>
+      <nav class="set-nav" aria-label="Settings">${parts.map(([id, title, note]) => `<a class="set-link" href="#/settings/${id}" ${id === cur[0] ? 'aria-current="true"' : ""}>
+        <span class="s-title">${title}</span><span class="s-note">${note}</span>${icon("chev")}</a>`).join("")}</nav>
+      <section class="set-pane" id="f-${cur[0]}" aria-labelledby="set-title">
+        <a class="back set-back" href="#/settings">${icon("back")}Settings</a>
+        <h2 class="title-md" id="set-title">${cur[1]}</h2>${cur[3]()}
+      </section>
+    </div>`);
+  $("[data-hide-hint]")?.addEventListener("click", e => { store.set("hint-install", "1"); e.target.closest(".callout").remove(); });
   bindYou();
+}
+
+// Portfolio: every skill, and where it shows.
+
+function skillNote(r, p) {
+  const n = r.repos.length;
+  return [r.cv ? "On your CV." : "Not on your CV.",
+    n ? `In ${plural(n, "project")} on GitHub: ${r.repos.slice(0, 6).map(esc).join(", ")}${n > 6 ? " and more" : ""}.` : "In no project on GitHub.",
+    r.linkedin === null ? "" : r.linkedin ? "On LinkedIn." : "Not on LinkedIn.",
+    r.asked ? `Asked for in ${r.asked} of ${plural(p.postings, "job")} you saved or found.` : ""].filter(Boolean).join(" ");
+}
+
+async function renderPortfolio(fresh = null) {
+  const head = (text, more = "") => `<header class="screen-head"><h1 class="title-xl">Portfolio</h1>${text ? `<p class="muted">${text}</p>` : ""}${more}</header>`;
+  if (state.screen !== "portfolio") frame("portfolio", `${head("")}${'<div class="skeleton" style="height:44px;margin-top:6px"></div>'.repeat(8)}`);
+  let p = fresh;
+  try {
+    p ||= await api("/api/portfolio");
+    // GitHub is read again by itself when what the app knows is more than a day old.
+    if (!fresh && p.github.user && Date.now() - new Date(p.github.at) > 864e5) p = await api("/api/portfolio/refresh", { method: "POST" }).catch(() => p);
+  } catch (ex) { toast(ex.message); return; }
+  if (parseRoute().name !== "portfolio") return;
+  const li = p.linkedin.has, lr = p.linkedin.review;
+  const has = r => Boolean(r.cv || r.repos.length);
+  const mine = p.skills.filter(has), wanted = p.skills.filter(r => r.asked);
+  const gaps = wanted.filter(r => !has(r)).sort((a, b) => b.asked - a.asked);
+  const mark = on => `<i class="mk ${on ? "on" : ""}" role="img" aria-label="${on ? "yes" : "no"}"></i>`;
+  const row = r => `<details class="sk-row"><summary>
+      <span class="sk-name">${esc(r.name)}</span>
+      <span class="sk-c">${mark(r.cv)}</span>
+      <span class="sk-c num">${r.repos.length || mark(false)}</span>
+      ${li ? `<span class="sk-c">${mark(r.linkedin)}</span>` : ""}
+      <span class="sk-c num ${r.asked ? "" : "none"}">${r.asked || "–"}</span></summary>
+    <p class="sk-more small">${skillNote(r, p)}</p></details>`;
+  const groups = p.groups.map(g => [g, p.skills.filter(r => r.group === g).sort((x, y) => has(y) - has(x) || y.asked - x.asked)]).filter(([, rows]) => rows.length);
+  const repos = [...p.github.repos].sort((a, b) => a.done - b.done);
+  const complete = repos.filter(r => r.checked && !r.missing.length).length;
+  const open = lr ? lr.checks.filter(c => !c.ok) : [];
+  frame("portfolio", `${head(p.hasCv || repos.length
+      ? `${plural(mine.length, "skill")} you can show${p.fields.length ? `, strongest in ${esc(p.fields.map(f => /^[A-Z][a-z]/.test(f) ? f[0].toLowerCase() + f.slice(1) : f).join(", ").replace(/, ([^,]*)$/, " and $1"))}` : ""}.
+        ${p.postings ? `The ${plural(p.postings, "job")} you saved or found ask for ${plural(wanted.length, "skill")}; ${gaps.length ? `${gaps.length} of them you do not show yet` : "you show all of them"}.` : ""}`
+      : `Upload your CV under <a class="link" href="#/docs">Documents</a> and add GitHub below. Then every skill shows up here.`,
+      `<div class="row-actions pf-again"><button class="btn btn-secondary" type="button" data-portfolio-refresh>Check everything again</button>
+        <span class="small muted">${p.github.at ? `GitHub read ${fmt(p.github.at)}` : "GitHub not added"}${p.linkedin.at ? ` · LinkedIn from ${fmt(p.linkedin.at)}` : ""}</span></div>`)}
+    <section class="sec"><div class="sec-head"><h2 class="label">Skills</h2><span class="small muted">Tap a skill to see where it shows.</span></div>
+      ${gaps.length ? `<p class="sk-gaps">Asked for, not shown yet: ${gaps.slice(0, 8).map(r => `<b>${esc(r.name)}</b> <span class="num">${r.asked}</span>`).join(", ")}.</p>` : ""}
+      <div class="sk ${li ? "" : "no-li"}">
+        <div class="sk-head" aria-hidden="true"><span></span><span>CV</span><span>GitHub</span>${li ? "<span>LinkedIn</span>" : ""}<span>Asked</span></div>
+        ${groups.map(([g, rows]) => `<h3 class="sk-group">${esc(g)}</h3>${rows.map(row).join("")}`).join("")}
+      </div>
+    </section>
+    <section class="sec"><div class="sec-head"><h2 class="label">GitHub</h2>
+        <span class="small muted tnum">${p.github.user ? `${esc(p.github.user)} · ${plural(repos.length, "project")} · ${complete} complete` : "Not added"}</span></div>
+      ${repos.length ? `<p class="small muted" style="margin-bottom:6px">What a recruiter finds when they open a project. The ones that need most come first.</p>
+        <div class="list">${repos.map(r => `<a class="repo-row" href="${esc(r.url)}" target="_blank" rel="noopener">
+          <span class="who"><span class="company">${esc(r.name)}</span>
+            <span class="small muted">${!r.checked ? "Read again to check it." : r.missing.length ? `Missing: ${esc(r.missing.join(", "))}.` : "Nothing missing."}</span></span>
+          <span class="repo-score num ${r.checked && !r.missing.length ? "full" : ""}">${r.checked ? `${r.done}/${r.total}` : "?"}</span></a>`).join("")}</div>` : ""}
+      <details class="weaker" ${p.github.user ? "" : "open"}><summary><span>${p.github.user ? "GitHub account" : "Add your GitHub"}</span>${icon("chev")}</summary>${githubBody(p.github)}</details>
+    </section>
+    <section class="sec"><div class="sec-head"><h2 class="label">LinkedIn</h2>
+        <span class="small muted tnum">${lr ? `${lr.done} of ${lr.total} checks · read ${fmt(p.linkedin.at)}` : "Not added"}</span></div>
+      ${lr ? `${open.length ? `<ul class="fixes">${open.map(c => `<li><b>${esc(c.label)}</b><span class="small">${esc(c.tip)}</span></li>`).join("")}</ul>` : `<p>Nothing to fix.</p>`}
+        <div class="row-actions pf-again" style="margin-top:14px"><label class="btn btn-secondary" style="cursor:pointer">Upload a new LinkedIn PDF<input type="file" accept=".pdf" class="sr" data-linkedin-file></label>
+          <span class="small muted">On LinkedIn: your profile, More, Save to PDF. LinkedIn does not let an app read it for you.</span></div>
+        ${lr.done ? `<p class="small muted" style="margin-top:12px">Fine: ${esc(lr.checks.filter(c => c.ok).map(c => c.label.toLowerCase()).join(", "))}.</p>` : ""}`
+        : `<p class="muted" style="max-width:60ch">Sift cannot open LinkedIn for you. Give it your profile as text and it compares it with your CV and GitHub.</p>`}
+      <details class="weaker" ${lr ? "" : "open"}><summary><span>${lr ? "Update your profile text" : "Add your profile"}</span>${icon("chev")}</summary>
+        <form class="form" id="linkedin-form" style="padding-top:14px">
+          <label class="field-label">Link to your profile<input class="field" name="link" value="${esc(p.linkedin.link || "")}" placeholder="linkedin.com/in/yourname" autocapitalize="off" spellcheck="false"></label>
+          <label class="field-label">Your profile as text<textarea class="field" name="text" rows="6" placeholder="Open your profile, select everything from your name down to your skills, copy, and paste it here."></textarea>
+            <span class="hint">Or on LinkedIn: More, then Save to PDF, and upload that file. Set LinkedIn to English first, so the headings are read right.</span></label>
+          <div class="row-actions"><label class="btn btn-secondary" style="cursor:pointer">Upload the PDF<input type="file" accept=".pdf" class="sr" data-linkedin-file></label>
+            <button class="btn btn-primary" type="submit">Check my profile</button></div>
+        </form></details>
+    </section>`);
+  bindYou();
+}
+
+async function saveLinkedin(body, button) {
+  if (button) { button.disabled = true; button.classList.add("busy"); }
+  try {
+    const r = body instanceof FormData ? await api("/api/linkedin/file", { method: "POST", body }) : await api("/api/linkedin", { method: "PUT", json: body });
+    toast(r.review ? `Checked: ${r.review.done} of ${r.review.total} fine.` : "Saved");
+    await renderPortfolio();
+  } catch (ex) { toast(ex.message, { ms: 6000 }); if (button) { button.disabled = false; button.classList.remove("busy"); } }
 }
 
 function cvBody(st) {
@@ -1397,13 +1705,11 @@ function cvBody(st) {
     </div>`;
 }
 
-function githubBody(st) {
-  const g = st.github || {}, list = g.projects || [];
-  return `<form class="form" id="github-form">
+function githubBody(g = {}) {
+  return `<form class="form" id="github-form" style="padding-top:14px">
     <p class="small muted">Your public projects count as skills next to your CV. Each job shows which ones to mention.</p>
     <label class="field-label">GitHub name<input class="field" name="user" value="${esc(g.user || "")}" placeholder="github.com/yourname" autocapitalize="off" spellcheck="false"></label>
-    ${list.length ? `<div class="chips">${list.map(p => `<a class="tag" href="${esc(p.url)}" target="_blank" rel="noopener" title="${esc(p.description)}">${esc(p.name)}</a>`).join("")}</div>` : ""}
-    <div class="row-actions">${g.user ? `<button class="btn btn-secondary" type="button" data-github-refresh>Read again</button>` : ""}<button class="btn btn-primary" type="submit">Save</button></div></form>`;
+    <div class="row-actions">${g.user ? `<button class="btn btn-secondary" type="button" data-github-refresh>Read again${g.at ? `, last ${fmt(g.at)}` : ""}</button>` : ""}<button class="btn btn-primary" type="submit">Save</button></div></form>`;
 }
 
 async function saveGithub(user, b) {
@@ -1468,12 +1774,18 @@ function shareLinkSheet(name, token, existing) {
   });
 }
 
-function pushBody(on) {
+const PUSH_KINDS = { owner: [["reply", "A company answers"], ["find", "The search finds a job that fits"], ["job", "Someone sends you a job"],
+  ["daily", "Morning summary: interviews, follow ups, deadlines"]], helper: [["status", "An application, an interview or an answer"]] };
+function pushBody(on, me = {}) {
   const supported = "serviceWorker" in navigator && "PushManager" in window;
-  return `<div class="setting-row"><span>Replies, interviews and new jobs on this device.</span>
+  const off = me.pushOff || [];
+  const kinds = on ? `<p class="label" style="margin:14px 0 2px">Tell me when</p>${PUSH_KINDS[isOwner() ? "owner" : "helper"].map(([k, label]) =>
+    `<label class="setting-row"><span>${label}</span><input type="checkbox" class="switch" data-push-kind="${k}" ${off.includes(k) ? "" : "checked"}></label>`).join("")}
+    <button class="btn btn-sm btn-quiet" type="button" data-push-test style="margin-left:-12px">Send a test</button>` : "";
+  return `<div class="setting-row"><span>Notifications on this device.</span>
       <input type="checkbox" class="switch" data-push ${on ? "checked" : ""} ${supported ? "" : "disabled"} aria-label="Notifications"></div>
     ${!supported && isIOS() && !standalone() ? `<p class="callout small" style="margin-top:10px">On an iPhone: tap Share, then Add to Home Screen. Open Sift from there and turn this on.</p>`
-      : !supported ? `<p class="hint">This browser cannot show notifications.</p>` : ""}`;
+      : !supported ? `<p class="hint">This browser cannot show notifications.</p>` : ""}${kinds}`;
 }
 
 function mailBody(st) {
@@ -1515,7 +1827,7 @@ async function uploadCv(e) {
     await loadStatus();
     toast(`CV saved. Score ${r.review.score}. Updated the fit of ${plural(r.rescored, "job")}.`);
     loadJobs();
-    if (parseRoute().name === "you") { await renderYou(); $("#f-cv")?.setAttribute("open", ""); } else renderJobs();
+    if (state.screen === "docs" || state.screen === "you") await renderYouKeep("f-cv"); else renderJobs();
   } catch (ex) { toast(ex.message); }
 }
 
@@ -1524,7 +1836,7 @@ function bindYou() {
   $("[data-cv]", root)?.addEventListener("change", uploadCv);
   $("[data-deep-review]", root)?.addEventListener("click", async e => {
     const b = e.currentTarget; b.disabled = true; b.textContent = "Reading your CV";
-    try { await api("/api/cv/review", { method: "POST", json: { deep: true } }); await renderYou(); $("#f-cv").setAttribute("open", ""); }
+    try { await api("/api/cv/review", { method: "POST", json: { deep: true } }); await renderYouKeep("f-cv"); }
     catch (ex) { toast(ex.message, { ms: 6000 }); b.disabled = false; b.textContent = "Try again"; }
   }, on);
   const saveSettings = async (form, msg) => {
@@ -1550,7 +1862,11 @@ function bindYou() {
       b.disabled = false;
     }
     if (f.id === "github-form") saveGithub(f.user.value.trim(), $("[type=submit]", f));
-    if (f.id === "ai-form") { await saveSettings(f, "Saved"); renderYou().then(() => $("#f-ai").setAttribute("open", "")); }
+    if (f.id === "ai-form") { await saveSettings(f, "Saved"); renderYouKeep("f-ai"); }
+    if (f.id === "linkedin-form") {
+      const text = f.text.value.trim();
+      saveLinkedin(text ? { link: f.link.value.trim(), text } : { link: f.link.value.trim() }, $("[type=submit]", f));
+    }
     if (f.id === "mail-form") { await saveSettings(f, "Saved. Checking your mail"); checkMail(); }
     if (f.id === "invite-form") {
       const name = f.name.value.trim();
@@ -1579,6 +1895,16 @@ function bindYou() {
     if (b.matches("[data-push-test]")) api("/api/push/test", { method: "POST" }).then(() => toast("Sent. It should arrive in a few seconds.")).catch(ex => toast(ex.message));
     if (b.matches("[data-check-mail]")) checkMail();
     if (b.matches("[data-github-refresh]")) saveGithub(null, b);
+    if (b.matches("[data-portfolio-refresh]")) {
+      b.disabled = true; b.classList.add("busy"); setLive("Reading GitHub");
+      try {
+        const p = await api("/api/portfolio/refresh", { method: "POST" });
+        loadJobs();
+        await renderPortfolio(p);
+        toast(`Read ${plural(p.github.repos.length, "GitHub project")} again and ran every check.${p.linkedin.has ? ` LinkedIn is from ${fmt(p.linkedin.at)}: upload its PDF to renew it.` : ""}`, { ms: 6000 });
+      } catch (ex) { toast(ex.message, { ms: 6000 }); b.disabled = false; b.classList.remove("busy"); }
+      setLive("");
+    }
     if (b.matches("[data-copy-share]")) { try { await navigator.clipboard.writeText(b.dataset.copyShare); toast("Address copied"); } catch { toast("Select the address and copy it."); } }
   }, on);
   root.addEventListener("change", async e => {
@@ -1587,6 +1913,14 @@ function bindYou() {
       try { on ? await enablePush() : await disablePush(); renderYouKeep("f-push"); }
       catch (ex) { e.target.checked = !on; toast(ex.message, { ms: 6000 }); }
     }
+    if (e.target.matches("[data-push-kind]")) {
+      const off = $$("[data-push-kind]").filter(x => !x.checked).map(x => x.dataset.pushKind);
+      try { await api("/api/me", { method: "PUT", json: { pushOff: off } }); toast("Saved"); } catch (ex) { e.target.checked = !e.target.checked; toast(ex.message); }
+    }
+    if (e.target.matches("[data-linkedin-file]") && e.target.files[0]) {
+      const fd = new FormData(); fd.append("file", e.target.files[0]); e.target.value = "";
+      saveLinkedin(fd);
+    }
     if (e.target.matches("[data-import]")) {
       const fd = new FormData(); fd.append("file", e.target.files[0]); e.target.value = "";
       try { const r = await api("/api/import/json", { method: "POST", body: fd }); toast(`Added ${r.added}, updated ${r.updated}`); loadJobs(); } catch (ex) { toast(ex.message); }
@@ -1594,7 +1928,12 @@ function bindYou() {
   }, on);
 }
 
-async function renderYouKeep(openId) { await renderYou(); $(`#${openId}`)?.setAttribute("open", ""); }
+// Paint the screen you are on again after a save, with the same part open.
+async function renderYouKeep(openId) {
+  if (state.screen === "portfolio") return renderPortfolio();
+  if (state.screen === "docs") { await renderDocs(); $(`#${openId}`)?.setAttribute("open", ""); return; }
+  await renderYou(parseRoute().id ? openId.replace(/^f-/, "") : "", true);
+}
 
 async function checkMail() {
   const done = () => loadInbox().catch(() => {});
@@ -1606,7 +1945,7 @@ async function checkMail() {
     loadJobs();
   } catch (ex) { toast(ex.message); }
   await done();
-  if (parseRoute().name === "you") renderYouKeep("f-mail");
+  if (state.screen === "you") renderYouKeep("f-mail");
 }
 
 // Notifications
@@ -1658,7 +1997,7 @@ function renderLogin() {
       <label class="field-label">Password<input class="field" type="password" name="password" autocomplete="current-password" required></label>
       <p class="error" data-error role="alert"></p>
       <button class="btn btn-primary btn-lg" type="submit">Sign in</button></form>
-    <p class="hint">Forgot your password? On your computer, open Sift from its icon: it signs you in, and you can set a new password under You. Family members: ask for a new sign in link.</p>`);
+    <p class="hint">Forgot your password? On your computer, open Sift from its icon: it signs you in, and you can set a new password under Settings. Family members: ask for a new sign in link.</p>`);
   authForm("#login-form", "/api/auth/login");
 }
 

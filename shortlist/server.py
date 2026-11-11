@@ -14,11 +14,12 @@ from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import NAME, brief, cvparse, cvreview, db, discover, geo, github, ingest, letters, llm, mail
+from . import NAME, brief, cvparse, cvreview, db, discover, geo, github, ingest, letters, llm, mail, portfolio
 from .extract import rule_extract
 from .push import Pusher
 from .score import SPOKEN
 from .scoring import score_job
+from .skills import GROUPS as SKILL_GROUPS
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 CAMEL = {"work_setup": "workSetup", "next_step": "nextStep", "added_by": "addedBy", "applied_on": "appliedOn",
@@ -32,12 +33,16 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 mimetypes.add_type("text/javascript", ".js")
 HELPER_PAGE = os.environ.get("SHORTLIST_HELPER_PAGE", "https://yannkleees.github.io/shortlist/")
 COOKIE = "shortlist_session"
+# The kinds of notification a person can switch off: answers from companies, jobs somebody sent, jobs the search found,
+# the morning summary, and (for the people who help) the steps of the search.
+PUSH_KINDS = ("reply", "job", "find", "daily", "status")
 LOOKING_FOR = "Junior data science roles, internships or working student jobs, ideally hybrid."
 
 # What a helper (someone who sends you jobs) may do. Everything else under /api is for the owner.
 PUBLIC = [("GET", r"/api/health"), ("GET", r"/api/auth/state"), ("POST", r"/api/auth/(?:login|setup|join)"),
           ("GET", r"/api/auth/invite/[^/]+"), ("POST", r"/api/share")]
-HELPER = [("GET", r"/api/status"), ("GET", r"/api/jobs"), ("GET", r"/api/jobs/[^/]+"), ("GET", r"/api/map"), ("GET", r"/api/jobs/[^/]+/travel"),
+HELPER = [("GET", r"/api/status"), ("GET", r"/api/calendar"),
+          ("GET", r"/api/jobs"), ("GET", r"/api/jobs/[^/]+"), ("GET", r"/api/map"), ("GET", r"/api/jobs/[^/]+/travel"),
           ("POST", r"/api/jobs/add"),
           ("POST", r"/api/jobs/import-link"), ("POST", r"/api/jobs/[^/]+/notes"), ("GET|PUT", r"/api/me"),
           ("POST|DELETE", r"/api/push/subscribe"), ("POST", r"/api/push/test"), ("POST", r"/api/auth/logout")]
@@ -188,8 +193,12 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
         d["gmail"] = f"https://mail.google.com/mail/u/{addr or 0}/#search/rfc822msgid%3A{msgid}" if "@" in msgid else ""
         return d
 
-    def owners_notify(title, body, url="/", tag=None):
-        pusher.notify(title, body, url=url, role="owner", tag=tag)
+    def owners_notify(title, body, url="/", tag=None, kind=None):
+        pusher.notify(title, body, url=url, role="owner", tag=tag, kind=kind)
+
+    def helpers_notify(title, body, url="/", tag=None, skip=()):
+        # The people who help hear about the steps that matter: applied, an interview, an answer.
+        pusher.notify(title, body, url=url, role="helper", tag=tag, kind="status", skip=skip)
 
     def job_title(j):
         return f"{j.get('role') or 'A job'} at {j.get('company') or 'a company'}"
@@ -295,7 +304,7 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
     @app.get("/api/me")
     def me(request: Request):
         u = request.state.user
-        return {**user_api(u), "push": db.has_push(con, u["id"]),
+        return {**user_api(u), "push": db.has_push(con, u["id"]), "pushOff": sorted(pusher.off(u["id"])),
                 "shareUrl": f"{public_url()}/api/share?key={u['share_key']}" if public_url() else f"/api/share?key={u['share_key']}"}
 
     @app.put("/api/me")
@@ -306,6 +315,8 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
             raise HTTPException(409, "Someone already uses this name.")
         if pw and len(pw) < 8:
             raise HTTPException(422, "Use a password of at least 8 characters.")
+        if isinstance(payload.get("pushOff"), list):
+            db.set_setting(con, f"push_off_{u['id']}", json.dumps(sorted({str(k) for k in payload["pushOff"] if k in PUSH_KINDS})))
         return user_api(db.update_user(con, u["id"], name=name or None, password=pw or None))
 
     @app.get("/api/people")
@@ -427,6 +438,61 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
         if not setting("github"):
             raise HTTPException(400, "Add your GitHub name first.")
         return load_github(setting("github"))
+
+    # Portfolio: your skills across the CV, GitHub and LinkedIn, and what each of them still lacks.
+
+    def linkedin_api():
+        text = setting("linkedin_text")
+        review = portfolio.linkedin_review(text, link=setting("linkedin"), cv=cv_text(), projects=projects(), profile=profile(),
+                                           spoken=spoken()) if text else None
+        return {"link": setting("linkedin"), "at": setting("linkedin_at"), "has": bool(text), "review": review}
+
+    @app.get("/api/portfolio")
+    def get_portfolio():
+        open_jobs = [j for j in db.list_jobs(con) if j["status"] not in ("Rejected", "Withdrawn")]
+        postings = [f"{j.get('role') or ''} {j.get('posting_text') or ''}" for j in open_jobs if j.get("posting_text")]
+        postings += [f"{f['title']} {f['text']}" for f in finds.new() if f["text"]]
+        rows = portfolio.skill_map(cv_text(), projects(), setting("linkedin_text"), postings)
+        return {"skills": rows, "groups": [*SKILL_GROUPS, "Other"], "postings": len(postings), "fields": portfolio.fields(rows),
+                "hasCv": bool(cv_text()),
+                "github": {"user": setting("github"), "at": setting("github_at"), "repos": [portfolio.repo_review(p) for p in projects()]},
+                "linkedin": linkedin_api()}
+
+    @app.post("/api/portfolio/refresh")
+    def refresh_portfolio():
+        """Read GitHub again and run every check again. LinkedIn turns automatic readers away, so its text is only as
+        new as your last paste or PDF; the date of that comes back with the rest."""
+        if setting("github"):
+            load_github(setting("github"))
+        return get_portfolio()
+
+    def save_linkedin(text):
+        db.set_setting(con, "linkedin_text", text[:40000])
+        db.set_setting(con, "linkedin_at", db.now() if text else "")
+
+    @app.put("/api/linkedin")
+    def set_linkedin(payload: dict = Body(...)):
+        """The profile as text you pasted. The app never signs in to LinkedIn or reads it by itself."""
+        if "link" in payload:
+            link = str(payload["link"] or "").strip()
+            if link and not re.search(r"linkedin\.com/in/[^/\s]+", link):
+                raise HTTPException(422, "Enter the link to your profile, like linkedin.com/in/yourname.")
+            db.set_setting(con, "linkedin", link)
+        if "text" in payload:
+            save_linkedin(str(payload["text"] or "").strip())
+        return linkedin_api()
+
+    @app.post("/api/linkedin/file")
+    async def upload_linkedin(file: UploadFile = File(...)):
+        # LinkedIn makes a PDF of a profile under More, Save to PDF.
+        try:
+            text = cvparse.extract_text(file.filename, await file.read())
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        if len(text) < 20:
+            raise HTTPException(400, "The file has almost no readable text.")
+        save_linkedin(text)
+        return linkedin_api()
 
     @app.put("/api/settings")
     def settings(request: Request, payload: dict = Body(...)):
@@ -624,7 +690,7 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
             j = new[0]
             more = f" and {len(new) - 1} more" if len(new) > 1 else ""
             fit = f" · fit {j['score']}" if j.get("score") is not None else ""
-            owners_notify(f"{by} sent you a job", f"{job_title(j)}{more}{fit}", url=f"/#/job/{j['id']}", tag=f"job-{j['id']}")
+            owners_notify(f"{by} sent you a job", f"{job_title(j)}{more}{fit}", url=f"/#/job/{j['id']}", tag=f"job-{j['id']}", kind="job")
         return out
 
     @app.post("/api/jobs/add")
@@ -705,11 +771,17 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
             updated = rescore_one(updated)  # a new place or setup changes distance and fit
         if new_status and new_status != job["status"]:
             kind = "Applied" if new_status == "Applied" else "Status"
-            db.add_event(con, jid, {"kind": kind, "text": "CV sent" if kind == "Applied" else f"Status changed to {new_status}"})
-            if job.get("sent_by_user") and new_status in ("Applied", "Interview", "Accepted"):
+            db.add_event(con, jid, {"kind": kind, "text": "CV sent" if kind == "Applied" else f"Status changed to {new_status}",
+                                    **({"date": fields["applied_on"]} if kind == "Applied" else {})})
+            if new_status in ("Applied", "Interview", "Accepted", "Rejected"):
                 me = setting("first_name") or "They"
-                verb = {"Applied": "applied to", "Interview": "has an interview for", "Accepted": "got"}[new_status]
-                pusher.notify(f"{me} {verb} the job you sent", job_title(job), url=f"/#/job/{jid}", user_ids=[job["sent_by_user"]], tag=f"job-{jid}")
+                verb = {"Applied": "applied to", "Interview": "has an interview for", "Accepted": "got", "Rejected": "got a no for"}[new_status]
+                sender = job.get("sent_by_user")
+                if sender:
+                    pusher.notify(f"{me} {verb} the job you sent", job_title(job), url=f"/#/job/{jid}", user_ids=[sender],
+                                  tag=f"job-{jid}", kind="status")
+                helpers_notify(f"{me} {verb} {job['company'] or 'a job'}", job_title(job), url=f"/#/job/{jid}", tag=f"job-{jid}",
+                               skip=[sender] if sender else ())
         return to_api(updated)
 
     @app.delete("/api/jobs/{jid}")
@@ -814,7 +886,7 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
             if good:
                 names = ", ".join(f"{f['title']}{' at ' + f['company'] if f['company'] else ''} ({f['score']})" for f in good[:3])
                 owners_notify(f"{len(good)} new job{'s' if len(good) > 1 else ''} that fit{'' if len(good) > 1 else 's'} you", names[:180],
-                              url="/#/find", tag="finds")
+                              url="/#/find", tag="finds", kind="find")
             return good
         finally:
             find_lock.release()
@@ -876,7 +948,10 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
                 fields["status"] = "Interview"
             title = {"rejection": f"{cur['company']} answered", "interview": f"Interview invitation from {cur['company']}"}.get(
                 e["kind"], f"{cur['company']} replied")
-            owners_notify(title, e["subject"][:140], url=f"/#/job/{j['id']}", tag=f"mail-{j['id']}")
+            owners_notify(title, e["subject"][:140], url=f"/#/job/{j['id']}", tag=f"mail-{j['id']}", kind="reply")
+            if e["kind"] == "interview":
+                helpers_notify(f"{setting('first_name') or 'They'} got an interview invitation", job_title(cur), url=f"/#/job/{j['id']}",
+                               tag=f"job-{j['id']}")
         if fields:
             db.update_job(con, j["id"], fields)
         db.add_event(con, j["id"], {"kind": kind, "text": text, "date": d})
@@ -897,7 +972,7 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
                     job, outcome = add_from_link(item["link"], text=item["title"], added_by=item["by"], note=item["note"], day=item["date"])
                     if outcome == "added":
                         result["added"] += 1
-                        owners_notify(f"{item['by']} sent you a job", job_title(job), url=f"/#/job/{job['id']}", tag=f"job-{job['id']}")
+                        owners_notify(f"{item['by']} sent you a job", job_title(job), url=f"/#/job/{job['id']}", tag=f"job-{job['id']}", kind="job")
                 if msgs:
                     db.set_setting(con, "mail_last_uid", str(max(int(m.uid) for m in msgs)))
                 for j in db.list_jobs(con):
@@ -930,13 +1005,70 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
         close = [j for j in jobs if j["status"] == "To apply" and j["deadline"] and today <= j["deadline"] <= soon]
         db.set_setting(con, "nudge_day", today)
         parts = []
+        tomorrow = (date.fromisoformat(today) + timedelta(days=1)).isoformat()
+        for e in calendar_entries(True):
+            if e["kind"] == "interview" and e["date"] in (today, tomorrow):
+                when = "today" if e["date"] == today else "tomorrow"
+                parts.append(f"Interview at {e['company'] or 'a company'} {when}{' at ' + e['time'] if e['time'] else ''}")
         if due:
             parts.append(f"{len(due)} follow up{'s' if len(due) > 1 else ''} due ({', '.join(j['company'] for j in due[:3])})")
         if close:
             parts.append(f"{len(close)} deadline{'s' if len(close) > 1 else ''} in two days ({', '.join(j['company'] for j in close[:3])})")
         if parts:
-            owners_notify("Today in your job search", ". ".join(parts) + ".", url="/", tag="daily")
+            owners_notify("Today in your job search", ". ".join(parts) + ".", url="/#/calendar", tag="daily", kind="daily")
         return parts
+
+    # The calendar: everything that happened or is planned, one entry per job, day and kind.
+
+    EVENT_KIND = {"Applied": "applied", "Email sent": "sent", "Message sent": "sent", "Reply": "reply", "Call": "call",
+                  "Interview": "interview", "Offer": "offer", "Rejection": "rejection"}
+    MAIL_KIND = {"sent": "sent", "confirmation": "applied", "interview": "invite", "rejection": "rejection"}
+    FROM_MAIL = ("From your mail:", "Confirmation:", "From ")
+
+    def calendar_entries(full):
+        """`full` adds what a mail said; a helper sees that something happened, not the words."""
+        jobs, out, seen, mailed = db.list_jobs(con), [], set(), set()
+
+        def add(day, kind, j, text="", time="", sender="", mail_id=None, event_id=None):
+            day = str(day or "")[:10]
+            if len(day) != 10 or (j["id"], day, kind) in seen:
+                return
+            seen.add((j["id"], day, kind))
+            out.append({"date": day, "time": time, "kind": kind, "jobId": j["id"], "company": j["company"], "role": j["role"],
+                        "text": text if full else "", "from": sender if full else "", "mailId": mail_id, "eventId": event_id})
+        by_id = {j["id"]: j for j in jobs}
+        for m in db.list_mails(con, limit=1000):
+            if j := by_id.get(m["job_id"]):
+                mailed.add((j["id"], str(m["date"])[:10]))
+                add(m["date"], MAIL_KIND.get(m["kind"], "reply"), j, m["subject"], sender=m["sender_name"] or m["sender"], mail_id=m["id"])
+        for j in jobs:
+            for e in db.list_events(con, j["id"]):
+                kind = EVENT_KIND.get(e["kind"])
+                if not kind or ((j["id"], e["date"][:10]) in mailed and e["text"].startswith(FROM_MAIL)):
+                    continue  # the mail itself is in the calendar already
+                clock = re.match(r"\s*(\d{1,2})[:h.](\d{2})\b\s*[·,-]?\s*", e["text"] or "")
+                add(e["date"], kind, j, e["text"][clock.end():] if clock else e["text"],
+                    time=f"{int(clock[1]):02d}:{clock[2]}" if clock else "", event_id=e["id"])
+            if j["applied_on"] and not any(k[0] == j["id"] and k[2] in ("applied", "sent") for k in seen):
+                add(j["applied_on"], "applied", j)
+            if j["status"] in ("Applied", "Waiting") and not j["replied_on"]:
+                add(j["follow_up"], "followup", j)
+            if j["status"] == "To apply":
+                add(j["deadline"], "deadline", j)
+        return sorted(out, key=lambda e: (e["date"], e["time"] or "99"))
+
+    @app.get("/api/calendar")
+    def calendar(request: Request):
+        return {"today": date.today().isoformat(), "entries": calendar_entries(request.state.user["role"] == "owner")}
+
+    @app.get("/api/letters")
+    def all_letters():
+        # Every letter written so far, newest first, with the job it is for.
+        jobs = {j["id"]: j for j in db.list_jobs(con)}
+        rows = [lt for j in jobs.values() for lt in db.list_letters(con, j["id"])]
+        return [{"id": lt["id"], "jobId": lt["job_id"], "company": jobs[lt["job_id"]]["company"], "role": jobs[lt["job_id"]]["role"],
+                 "language": lt["language"], "updatedAt": lt["updated_at"], "start": " ".join(lt["text"].split())[:160],
+                 "words": len(lt["text"].split())} for lt in sorted(rows, key=lambda x: x["updated_at"], reverse=True)]
 
     app.state.check_mail = check_mail
     app.state.daily = daily_nudges

@@ -6,7 +6,6 @@ A job search app for you and the people who help you. Paste a link from LinkedIn
 
 Your family gets their own account. They find a job, tap Paste, and it is in your list with its fit score. When you apply to a job they sent, they get a notification too.
 
-![Sift on a phone: the job list, why a job fits, and the CV review](docs/screenshot.jpg)
 
 ## What it does
 
@@ -17,12 +16,15 @@ Your family gets their own account. They find a job, tap Paste, and it is in you
 5. **Where it is.** A map shows every job as a pin, next to the list. Each job shows the way from your home and how long it takes by car, by bike and on foot, with a link to bus and train times.
 6. **Why it fits.** A score from 0 to 100 with one line per reason and its points, then the skills the posting asks for that your CV or your GitHub projects show, the ones you would still need, and the projects worth mentioning.
 7. **Accounts for helpers.** Invite your mother, a friend or a partner with a link. They are signed in when they open it, can send jobs, see every job with its fit, and write you a note on a job. They do not see your settings, letters or mail.
-8. **CV check.** Upload a PDF, Word file, LaTeX file or the zip Overleaf downloads. Every upload is checked for the basics recruiters look for: length, contact details, LinkedIn, clear sections, results in numbers, strong verbs, dates and named skills. A deep review by Claude (or your local model) scores the CV for the jobs you want and lists concrete fixes and missing keywords. Add your GitHub name under You and your public projects count as proof of skills too: Sift reads their descriptions, topics and READMEs.
+8. **CV check.** Upload a PDF, Word file, LaTeX file or the zip Overleaf downloads. Every upload is checked for the basics recruiters look for: length, contact details, LinkedIn, clear sections, results in numbers, strong verbs, dates and named skills. A deep review by Claude (or your local model) scores the CV for the jobs you want and lists concrete fixes and missing keywords. Add your GitHub name under Portfolio and your public projects count as proof of skills too: Sift reads their descriptions, topics and READMEs.
 9. **Letters.** Claude or a local Ollama model writes a draft from your CV and the posting, in English, French, German, Dutch or Luxembourgish. Revise it with one tap (shorter, more formal, more personal, fix grammar) or your own words; every version is kept. Download as Word.
 10. **Company replies in the app.** Connect a Gmail inbox, read only. Replies, interview invitations and rejections appear in the Inbox and on the job, with the text of the mail, a Reply button and a link to open it in Gmail, and your phone gets a notification. Mails you sent to a company mark the job as applied.
 11. **Reminders.** Marking a job as applied sets a follow up ten days later. Once a day you get one notification with the follow ups that are due and the deadlines in the next two days.
 12. **People and timeline.** For each job: the recruiters and anyone you know there, and every email, call, reply and interview with its date.
-13. **One file.** Everything lives in `shortlist.db`, with a daily backup. Download a copy as JSON under You → Account; `POST /api/import/json` reads it back.
+13. **Calendar.** One month and one list for everything with a date: when you applied or wrote, when a company answered and what it said, interviews and calls you planned, follow ups and deadlines. Each kind has its own mark, by shape and not by colour. The people who help you see the same calendar, without the words of your mails. An interview is announced on your phone the day before and on the day.
+14. **One place for each thing.** Mail holds every mail about your applications, sorted into replies, interviews, rejections and what you wrote. Documents holds your CV and every letter. Settings holds what you are looking for, your family, your mailbox, and which notifications you want: a company answers, the search finds a job that fits, somebody sends you a job, the morning summary. A helper can be told when you apply, get an interview or an answer.
+15. **Portfolio.** Every skill on one line, with where it shows: on your CV, in how many GitHub projects, on LinkedIn, and how many of your saved and found jobs ask for it. The skills that jobs ask for and you do not show yet are named first. Each GitHub project is checked for what a recruiter looks for (a description, topics, a README that explains it, how to run it, a picture or result, a licence), the ones that need most first. LinkedIn is compared with your CV: headline, About, jobs and projects that are missing, skills, languages, numbers, the profile link. Sift never opens LinkedIn itself; you paste your profile or upload the PDF LinkedIn makes of it.
+16. **One file.** Everything lives in `shortlist.db`, with a daily backup. Download a copy as JSON under Settings → Account; `POST /api/import/json` reads it back.
 
 ## Quick start on your computer
 
@@ -32,7 +34,7 @@ cd shortlist
 ./start.sh          # Windows: double click start.bat
 ```
 
-The first run creates a virtual environment and installs everything. The app opens at http://127.0.0.1:8000 and asks for your name and a password: that is the owner account. Then upload your CV under You and add your first job.
+The first run creates a virtual environment and installs everything. The app opens at http://127.0.0.1:8000 and asks for your name and a password: that is the owner account. Then upload your CV under Documents and add your first job.
 
 **An icon in your taskbar.** Run `.venv\Scripts\python -m shortlist.launch --shortcut` once. It puts Sift in the Start menu and on the Desktop; right click it in Start and choose **Pin to taskbar**. One click then starts Sift quietly in the background (no black window) and opens it in its own app window. It keeps checking your mail after you close the window.
 
@@ -42,7 +44,7 @@ Forgot your password? `python -m shortlist --sign-in-link Yann` prints a one tim
 
 On your computer alone, Sift works fully, but your mother cannot reach it and your phone gets no notifications. Notifications on an iPhone also need a secure https address. Two ways:
 
-**Free: from your own computer, with Tailscale Funnel.** Install [Tailscale](https://tailscale.com), sign in, and run `tailscale funnel 8000` while Sift runs. You get a fixed address like `https://laptop.tail1234.ts.net`. Put it in `.env` as `SHORTLIST_PUBLIC_URL`, restart, and invite people. It works whenever your computer is on and awake.
+**Free: from your own computer, with Tailscale Funnel.** Install [Tailscale](https://tailscale.com), sign in, and run `tailscale funnel --bg 8000` (the first time it gives you a link to switch Funnel on for your account). You get a fixed address like `https://laptop.tail1234.ts.net`. Put it in `.env` as `SHORTLIST_PUBLIC_URL`, restart, and invite people. It works whenever your computer is on and awake.
 
 **Always on: Fly.io, about 3 to 4 euros a month.** A small server in Amsterdam keeps checking your mail and sends notifications while your computer is off. With the [Fly CLI](https://fly.io/docs/flyctl/install/):
 
@@ -53,12 +55,12 @@ fly secrets set ANTHROPIC_API_KEY=sk-ant-... SHORTLIST_PUBLIC_URL=https://<your-
 fly deploy
 ```
 
-A server cannot run a local model, so online Sift writes letters with Claude. A letter costs a few cents. Move your data over with the copy from You → Account and `POST /api/import/json`.
+A server cannot run a local model, so online Sift writes letters with Claude. A letter costs a few cents. Move your data over with the copy from Settings → Account and `POST /api/import/json`.
 
 ### On the iPhone
 
 1. Open your Sift address in Safari, tap Share, then **Add to Home Screen**. From then on it opens like an app.
-2. Open it from the Home Screen, go to You (or Account), and turn on **Notifications**. iOS 16.4 or newer.
+2. Open it from the Home Screen, go to Settings, and turn on **Notifications**. iOS 16.4 or newer.
 3. Optional, for one tap sharing from LinkedIn: make a Shortcut with one action, **Get Contents of URL**, that POSTs `{"text": Shortcut Input}` to your personal address (`GET /api/me` returns it as `shareUrl`). Turn on Show in Share Sheet.
 
 ### Inviting your family
@@ -79,7 +81,7 @@ A rule based extractor reads seniority, minimum years, field, work setup, job ty
 
 A required language you do not speak costs 15 points. A degree above yours (a PhD when you have a Master's) costs 10; a Master's that is asked for while yours is still running is shown, and costs nothing. Senior roles, and jobs that ask for three or more years beyond your own, are capped at 35.
 
-What you asked for lives under You → What you are looking for: job titles, levels, work setup, where to search, your years of experience. Your degrees are read from the education lines of your CV. Changing any of it, or the CV, home or language list, updates every job; your own edits stay. Before you fill it in, the general weights in `shortlist/score.py` apply.
+What you asked for lives under Settings → What you are looking for: job titles, levels, work setup, where to search, your years of experience. Your degrees are read from the education lines of your CV. Changing any of it, or the CV, home or language list, updates every job; your own edits stay. Before you fill it in, the general weights in `shortlist/score.py` apply.
 
 Finding jobs is `shortlist/discover.py`. Each site is one small function that takes a job title and a place and returns listings, so adding a site is adding one function to `SOURCES`. Every site is asked the way a visitor's browser asks it, without an account. A site that answers with a captcha or a login wall is not a source, and nothing in the code tries to get around one: that rules out Indeed, Monster, Moovijob and Glassdoor (Moovijob's vacancies still arrive through EURES). jobs.lu, ICTjob.lu and Jobfinder.lu are asked only when you search in Luxembourg; EURES, eFinancialCareers and Amazon for any country the code knows by name. LinkedIn's and eFinancialCareers' terms do not welcome automated reading, so the volume is kept to a handful of requests per search; leave them out of `SOURCES` if you would rather not.
 
@@ -128,6 +130,9 @@ The app is a small JSON API that you can also script against; interactive docs a
 | `POST /api/cv`, `POST /api/cv/review` | upload and review your CV |
 | `PUT /api/github`, `POST /api/github/refresh` | add your GitHub name, read your projects again |
 | `POST /api/push/subscribe`, `/api/push/test` | notifications |
+| `GET /api/portfolio`, `PUT /api/linkedin`, `POST /api/linkedin/file` | skills across CV, GitHub and LinkedIn; your LinkedIn profile as pasted text or PDF |
+| `GET /api/calendar` | everything that happened or is planned, by day (helpers get it without mail text) |
+| `GET /api/letters` | every letter, newest first |
 | `GET /api/mails`, `POST /api/mails/seen` | the inbox: replies with their text, and what you have read |
 | `POST /api/mail/check`, `PUT /api/settings`, `GET /api/export`, `POST /api/import/json` | mail, settings, moving data |
 
@@ -153,6 +158,8 @@ shortlist/
   brief.py        what a job is: tasks, kinds of work, the degree asked against yours
   discover.py     finding jobs: the job sites it asks, telling the same job on two sites apart, and what was found, saved or skipped
   cvreview.py     CV checks and the deep review
+  github.py       your public repositories and their READMEs
+  portfolio.py    skills across CV, GitHub and LinkedIn, and the checks on each
   llm.py          Claude or Ollama
   letters.py      letter prompts and Word export
   push.py         Web Push notifications
@@ -160,7 +167,7 @@ shortlist/
   launch.py       the taskbar icon: starts the server quietly and opens the app window
   geo.py          OpenStreetMap places, distances and routes
 web/              the app: one page, plain JavaScript and CSS, a service worker for notifications
-docs/             the older mail based helper page (still works) and the screenshot
+docs/             the older mail based helper page (still works)
 fly.toml          always on hosting on Fly.io
 ```
 

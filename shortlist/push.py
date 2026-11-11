@@ -41,8 +41,16 @@ class Pusher:
         except Exception:  # pywebpush not installed: the app works, only without notifications
             return ""
 
-    def notify(self, title, body, url="/", user_ids=None, role=None, tag=None, wait=False):
-        targets = db.push_targets(self.con, user_ids=user_ids, role=role)
+    def off(self, user_id):
+        """The kinds of notification this person switched off, under Settings."""
+        try:
+            return set(json.loads(db.get_setting(self.con, f"push_off_{user_id}") or "[]"))
+        except ValueError:
+            return set()
+
+    def notify(self, title, body, url="/", user_ids=None, role=None, tag=None, wait=False, kind=None, skip=()):
+        targets = [t for t in db.push_targets(self.con, user_ids=user_ids, role=role)
+                   if t["user_id"] not in skip and not (kind and kind in self.off(t["user_id"]))]
         if not targets:
             return 0
         payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag or url})

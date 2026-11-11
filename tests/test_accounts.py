@@ -299,3 +299,99 @@ def test_cv_from_latex_or_an_overleaf_zip():
         z.writestr("main.tex", tex)
         z.writestr("res.cls", "x")
     assert cvparse.extract_text("cv.zip", buf.getvalue()) == text
+
+
+def test_calendar_shows_both_of_you_what_happened_and_what_is_planned(tmp_path):
+    a = app(tmp_path)
+    owner = signed_in(a)
+    mama = join(a, owner)
+    papa = join(a, owner, name="Papa")
+    for who, c in (("mama", mama), ("papa", papa)):
+        c.post("/api/push/subscribe", json={"endpoint": f"https://push.example/{who}", "keys": {"p256dh": "k", "auth": "a"}})
+    assert papa.put("/api/me", json={"pushOff": ["status", "nonsense"]}).status_code == 200
+    assert papa.get("/api/me").json()["pushOff"] == ["status"]
+
+    job = owner.post("/api/jobs", json={"company": "Contoso Bank", "role": "Data Analyst"}).json()
+    other = owner.post("/api/jobs", json={"company": "Fabrikam", "role": "Data Scientist", "deadline": "2026-12-01"}).json()
+    owner.patch(f"/api/jobs/{job['id']}", json={"status": "Applied", "appliedOn": "2026-11-02"})
+    con = db.connect(tmp_path / "a.db")
+    db.add_mail(con, job["id"], {"msgid": "<1@x>", "date": "2026-11-09", "kind": "interview", "from": "hr@contoso.example", "name": "Maria",
+                                 "subject": "Invitation to an interview", "body": "Next week?"})
+    db.add_event(con, job["id"], {"kind": "Interview", "text": "From hr@contoso.example: Invitation to an interview", "date": "2026-11-09"})
+    assert owner.post(f"/api/jobs/{job['id']}/events", json={"kind": "Interview", "date": "2026-11-14", "text": "14:30 · video call"}).status_code == 200
+
+    cal = owner.get("/api/calendar").json()["entries"]
+    assert [(e["date"], e["kind"]) for e in cal if e["jobId"] == job["id"]] == [
+        ("2026-11-02", "applied"), ("2026-11-09", "invite"), ("2026-11-12", "followup"), ("2026-11-14", "interview")], "the invitation counts once"
+    planned = next(e for e in cal if e["kind"] == "interview")
+    assert planned["time"] == "14:30" and planned["text"] == "video call" and cal[1]["text"] == "Invitation to an interview"
+    assert [e["kind"] for e in cal if e["jobId"] == other["id"]] == ["deadline"]
+
+    seen = mama.get("/api/calendar").json()["entries"]
+    assert len(seen) == len(cal) and not any(e["text"] or e["from"] for e in seen), "a helper sees that it happened, not what the mail said"
+    assert mama.get("/api/mails").status_code == 403 and mama.get("/api/letters").status_code == 403
+
+    a.state.pusher.notify("x", "y", role="nobody", wait=True)
+    got = [(ep.rsplit("/", 1)[-1], p["title"]) for ep, p in a.state.sent]
+    assert ("mama", "Yann applied to Contoso Bank") in got and not any(who == "papa" for who, _ in got), "Papa switched these off"
+    assert owner.get("/api/letters").json() == []
+
+    sent = []
+    a.state.pusher.notify = lambda title, body, **kw: sent.append((title, body))
+    assert a.state.daily("2026-11-13")[0] == "Interview at Contoso Bank tomorrow at 14:30" and "Today in your job search" in sent[0][0]
+
+
+def test_portfolio_shows_skills_across_cv_github_and_linkedin(tmp_path):
+    repos = [{"name": "flows", "description": "Delivery pipelines with Spark and Airflow", "language": "Python",
+              "topics": ["apache-spark", "airflow", "etl"], "html_url": "https://github.com/Yann/flows", "default_branch": "main",
+              "license": {"key": "mit"}},
+             {"name": "bare", "description": "", "language": "Java", "topics": [], "default_branch": "main"}]
+    readme = "# flows\n![chart](docs/chart.png)\n" + "Forecasting deliveries with Spark and Airflow. " * 30 + "\n## Usage\n`make run`"
+
+    def get(url, **kw):
+        if url.endswith("/repos"):
+            return SimpleNamespace(status_code=200, json=lambda: repos)
+        return SimpleNamespace(status_code=200, text=readme) if "flows" in url else SimpleNamespace(status_code=404, text="")
+
+    a = app(tmp_path, github_get=get)
+    c = signed_in(a)
+    cv = ("Yann Example\nData Analyst | Jan 2025 - Jun 2025 | Northwind | Luxembourg\n- Built reports in Python, SQL and pandas.\n"
+          "Parcel Sorter | Hackathon project | Mar 2025\n")
+    c.post("/api/cv", files={"file": ("cv.txt", cv.encode(), "text/plain")})
+    c.put("/api/settings", json={"languages": "English, French", "profile": {"roles": "Data Analyst", "where": "Luxembourg"}})
+    c.put("/api/github", json={"user": "Yann"})
+    c.post("/api/jobs/add", json={"text": POSTING})
+
+    p = c.get("/api/portfolio").json()
+    rows = {r["name"]: r for r in p["skills"]}
+    assert rows["Python"]["cv"] and rows["Python"]["repos"] == ["flows"] and rows["Python"]["asked"] == 1
+    assert rows["Spark"]["repos"] == ["flows"] and not rows["Spark"]["cv"] and rows["Spark"]["linkedin"] is None
+    assert rows["Python"]["group"] == "Languages" and rows["Spark"]["group"] == "Data engineering"
+    by = {r["name"]: r for r in p["github"]["repos"]}
+    assert by["flows"]["missing"] == [] and by["flows"]["done"] == 6
+    assert "a licence" in by["bare"]["missing"] and "a README that explains it" in by["bare"]["missing"]
+    assert p["linkedin"] == {"link": "", "at": "", "has": False, "review": None}
+
+    assert c.put("/api/linkedin", json={"link": "example.com/me"}).status_code == 422
+    profile = ("Yann Example\nStudent | Python\n\nAbout\nI like data.\n\nExperience\nIntern\nSomewhere else\n\nSkills\nPython\nSQL\n")
+    r = c.put("/api/linkedin", json={"link": "https://www.linkedin.com/in/yann-example-a1b2c3d4e", "text": profile}).json()["review"]
+    tips = {x["key"]: x for x in r["checks"]}
+    assert not tips["headline"]["ok"] and "Looking for Data Analyst roles in Luxembourg" in tips["headline"]["tip"]
+    assert not tips["entries"]["ok"] and "Northwind" in tips["entries"]["tip"] and "Parcel Sorter" in tips["entries"]["tip"]
+    assert not tips["skills"]["ok"] and "Spark" in tips["skills"]["tip"] and "Python" not in tips["skills"]["tip"]
+    assert not tips["languages"]["ok"] and "linkedin.com/in/yannexample" in tips["link"]["tip"]
+
+    better = ("Yann Example\nData Analyst in training | Python, SQL | Looking for Data Analyst roles\n\nAbout\n" + "I build data pipelines. " * 12 +
+              "\n\nExperience\nData Analyst\nNorthwind\nCut report time by 40% for 300 users with Python, SQL, pandas, Spark, Airflow and ETL jobs in Java.\n\n"
+              "Projects\nParcel Sorter\ngithub.com/Yann/flows\n\nLanguages\nEnglish\nFrench\n")
+    r = c.put("/api/linkedin", json={"link": "linkedin.com/in/yannexample", "text": better}).json()["review"]
+    assert [x["key"] for x in r["checks"] if not x["ok"]] == [] and r["score"] == 100
+    assert c.get("/api/portfolio").json()["skills"][0]["linkedin"] is True
+
+    # Checking again reads GitHub anew: a project that got a licence since then counts.
+    repos[1].update(description="A small board game with a minimax player", license={"key": "mit"})
+    again = {r["name"]: r for r in c.post("/api/portfolio/refresh").json()["github"]["repos"]}
+    assert "a licence" not in again["bare"]["missing"] and "a one line description" not in again["bare"]["missing"]
+
+    # A helper has no business here.
+    assert join(a, c).get("/api/portfolio").status_code == 403

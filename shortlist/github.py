@@ -28,6 +28,14 @@ def readme_text(md, limit=1500):
     return re.sub(r"\s+", " ", t).strip()[:limit]
 
 
+def readme_shape(md):
+    """What a visitor gets from the README: how much it says, whether it shows something, whether it says how to run it."""
+    md = md or ""
+    return {"readme_words": len(readme_text(md, limit=10 ** 6).split()),
+            "has_picture": bool(re.search(r"!\[[^\]]*\]\([^)]+\)|<img\b", md)),
+            "has_run": bool(re.search(r"(?im)^#+\s*(?:install|usage|getting started|quick ?start|how to (?:run|use)|run|running|set ?up|reproduc|demo)", md))}
+
+
 def fetch(user, get=requests.get, readmes=30):
     """Public repositories, most recently worked on first. Raises ValueError with a readable message."""
     try:
@@ -44,11 +52,12 @@ def fetch(user, get=requests.get, readmes=30):
         if repo.get("name", "").lower() == user.lower() or repo.get("archived"):
             continue  # the profile README repository is not a project
         topics = repo.get("topics") or []
-        readme = ""
+        readme, shape = "", {}
         if len(out) < readmes:
             try:
                 rr = get(f"{RAW}/{user}/{repo['name']}/{repo.get('default_branch') or 'main'}/README.md", timeout=10)
                 readme = readme_text(rr.text) if rr.status_code == 200 else ""
+                shape = readme_shape(rr.text if rr.status_code == 200 else "")
             except requests.RequestException:
                 pass
         words = " ".join([repo["name"], repo.get("description") or "", repo.get("language") or "", " ".join(t.replace("-", " ") for t in topics)])
@@ -57,6 +66,7 @@ def fetch(user, get=requests.get, readmes=30):
             "description": (repo.get("description") or "").strip(), "language": repo.get("language") or "",
             "topics": topics, "updated": (repo.get("pushed_at") or "")[:10], "readme": readme,
             "skills": find_skills(f"{words} {readme}"),
+            "license": bool(repo.get("license")), "homepage": (repo.get("homepage") or "").strip(), **shape,
         })
     return out
 
