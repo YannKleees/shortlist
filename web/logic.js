@@ -1,4 +1,4 @@
-// Pure functions for Shortlist. No DOM access, so they run in the browser and in Node tests.
+// Pure functions for Sift. No DOM access, so they run in the browser and in Node tests.
 
 export const STATUSES = ["To apply", "Applied", "Waiting", "Interview", "Accepted", "Rejected", "Not interested"];
 export const FITS = ["Top pick", "Good", "Maybe", "Stretch"];
@@ -68,7 +68,7 @@ export function parseImport(text, now) {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error("This file is not valid JSON. Export it again from Shortlist or check the format in the README.");
+    throw new Error("This file is not valid JSON. Export it again from Sift or check the format in the README.");
   }
   const rows = Array.isArray(data) ? data : Array.isArray(data?.jobs) ? data.jobs : null;
   if (!rows) throw new Error("The file should contain a list of jobs, or an object with a jobs list.");
@@ -138,4 +138,37 @@ export function summarize(jobs, today = todayISO()) {
     waiting: jobs.filter(isWaiting).length,
     due: jobs.filter(j => isFollowUpDue(j, today)).length,
   };
+}
+
+// Jobs whose company, role or place starts a word with the query, best fit first. For the search combo box.
+export function searchJobs(jobs, query, limit = 6) {
+  const q = query.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (!q) return [];
+  const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const rank = j => {
+    const company = norm(j.company), role = norm(j.role), place = norm(j.location);
+    if (company.startsWith(q)) return 0;
+    if (role.startsWith(q) || company.includes(` ${q}`)) return 1;
+    if (role.includes(` ${q}`) || place.startsWith(q)) return 2;
+    if (`${company} ${role} ${place}`.includes(q)) return 3;
+    return 9;
+  };
+  return jobs.map(j => [rank(j), j]).filter(([r]) => r < 9)
+    .sort((a, b) => a[0] - b[0] || (b[1].score ?? -1) - (a[1].score ?? -1))
+    .slice(0, limit).map(([, j]) => j);
+}
+
+// The one thing to do next for a job, in a few words.
+export function nextAction(job, today = todayISO()) {
+  if (job.status === "To apply") {
+    if (job.hasText === false) return { text: "Paste the job text", tone: "maybe" };
+    if (job.deadline && job.deadline < today) return { text: "Deadline passed", tone: "low" };
+    if (job.deadline && job.deadline <= addDays(today, 3)) return { text: `Apply by ${job.deadline.slice(8, 10)}.${job.deadline.slice(5, 7)}.`, tone: "low" };
+    return { text: "", tone: "" };
+  }
+  if (isFollowUpDue(job, today)) return { text: "Follow up today", tone: "low" };
+  if (job.status === "Interview") return { text: "Interview", tone: "top" };
+  if (job.repliedOn && GROUPS.progress.includes(job.status)) return { text: "They replied", tone: "top" };
+  if (isWaiting(job)) return { text: "Waiting", tone: "" };
+  return { text: job.status, tone: "" };
 }

@@ -27,3 +27,4 @@ __pycache__/
 # Node and OS
 node_modules/
 .DS_Store
+shortlist.log

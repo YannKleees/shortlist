@@ -175,13 +175,31 @@ def domain(addr):
     return addr.rsplit("@", 1)[-1].lower() if "@" in addr else ""
 
 
+QUOTE_START = re.compile(r"^(?:on .{5,120} wrote:|am .{5,120} schrieb .{1,80}:|le .{5,120} a écrit\s?:|-{2,} ?original message|"
+                         r"von: |from: .+@|-----ursprüngliche nachricht|________________)", re.I)
+
+
+def readable(text, limit=4000):
+    """The new part of a mail: quoted earlier messages and long blank runs removed."""
+    out = []
+    for line in (text or "").replace("\r", "").splitlines():
+        if QUOTE_START.match(line.strip()):
+            break
+        if line.lstrip().startswith(">"):
+            continue
+        out.append(line.rstrip())
+    body = re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+    return body[:limit]
+
+
 def evidence(sent, received, me=""):
     """Turn the mails found for one company into facts: applied on, confirmation, reply, rejection."""
     me = (me or "").lower()
     out, their_domains = [], set()
     for m in sorted(sent, key=lambda m: m.date):
         their_domains.update(domain(a) for a in m.to if a != me and not any(b in a for b in JOB_BOARDS))
-        out.append({"kind": "sent", "date": m.date, "subject": m.subject, "msgid": m.msgid})
+        out.append({"kind": "sent", "date": m.date, "subject": m.subject, "msgid": m.msgid, "from": m.sender, "name": "",
+                    "body": readable(m.text)})
     for m in sorted(received, key=lambda m: m.date):
         if m.sender == me or any(b in m.sender for b in JOB_BOARDS) or TAG.lower() in m.subject.lower():
             continue
@@ -194,6 +212,6 @@ def evidence(sent, received, me=""):
             kind = "interview" if INTERVIEW.search(body) else "reply"
         else:
             continue
-        out.append({"kind": kind, "date": m.date, "subject": m.subject, "msgid": m.msgid, "from": m.sender,
-                    "about_application": bool(ABOUT_APPLICATION.search(body))})
+        out.append({"kind": kind, "date": m.date, "subject": m.subject, "msgid": m.msgid, "from": m.sender, "name": m.sender_name,
+                    "body": readable(m.text), "about_application": bool(ABOUT_APPLICATION.search(body))})
     return out

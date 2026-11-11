@@ -50,6 +50,6 @@ jobs:
       - name: Smoke test the container
         run: |
           docker run -d --name smoke -p 8000:8000 shortlist:ci
-          for i in $(seq 1 30); do curl -sf localhost:8000/api/status && break; sleep 2; done
+          for i in $(seq 1 30); do curl -sf localhost:8000/api/health && break; sleep 2; done
           curl -sf localhost:8000/ | grep -q Shortlist
           docker rm -f smoke

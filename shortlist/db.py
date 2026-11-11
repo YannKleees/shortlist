@@ -1,6 +1,9 @@
+import hashlib
 import re
+import secrets
 import sqlite3
-from datetime import UTC, datetime
+import threading
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 JOB_COLUMNS = {
@@ -12,6 +15,7 @@ JOB_COLUMNS = {
     "deadline": "TEXT DEFAULT ''", "cv_sent": "INTEGER DEFAULT 0", "applied_on": "TEXT DEFAULT ''",
     "follow_up": "TEXT DEFAULT ''", "replied_on": "TEXT DEFAULT ''", "posting_text": "TEXT DEFAULT ''",
     "salary": "TEXT DEFAULT ''", "distance_km": "REAL", "reasons": "TEXT DEFAULT ''",
+    "skills": "TEXT DEFAULT ''", "needs": "TEXT DEFAULT ''", "sent_by_user": "INTEGER", "facts": "TEXT DEFAULT ''",
     "created_at": "TEXT NOT NULL", "updated_at": "TEXT NOT NULL",
 }
 JOB_FIELDS = list(JOB_COLUMNS)
@@ -41,15 +45,74 @@ CREATE TABLE IF NOT EXISTS letters (
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS mail_seen (msgid TEXT NOT NULL, job_id TEXT NOT NULL, PRIMARY KEY (msgid, job_id));
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, password TEXT DEFAULT '', role TEXT NOT NULL DEFAULT 'helper',
+    share_key TEXT DEFAULT '', created_at TEXT NOT NULL, last_seen TEXT DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS users_name ON users (lower(trim(name)));
+CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS invites (
+    token TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'helper', user_id INTEGER REFERENCES users (id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS mails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL REFERENCES jobs (id) ON DELETE CASCADE, msgid TEXT NOT NULL,
+    date TEXT DEFAULT '', kind TEXT NOT NULL, sender TEXT DEFAULT '', sender_name TEXT DEFAULT '', subject TEXT DEFAULT '',
+    body TEXT DEFAULT '', seen INTEGER DEFAULT 0, created_at TEXT NOT NULL, UNIQUE (job_id, msgid)
+);
+CREATE TABLE IF NOT EXISTS push_subs (
+    endpoint TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT NOT NULL
+);
 """.replace("{cols}", ", ".join(f"{k} {v}" for k, v in JOB_COLUMNS.items()))
 
 now = lambda: datetime.now(UTC).isoformat(timespec="seconds")
 today = lambda: datetime.now().date().isoformat()
 
 
+class _Rows:
+    # A finished query: rows are read while the lock is held, so threads never share a half read statement.
+    def __init__(self, cur):
+        self.rows, self.lastrowid = cur.fetchall(), cur.lastrowid
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+    def fetchall(self):
+        return self.rows
+
+    def __iter__(self):
+        return iter(self.rows)
+
+
+class Connection:
+    """One SQLite connection shared by the web server, the mail watcher and the notification sender, one call at a time."""
+
+    def __init__(self, raw):
+        self.raw, self.lock = raw, threading.RLock()
+
+    def execute(self, sql, args=()):
+        with self.lock:
+            return _Rows(self.raw.execute(sql, args))
+
+    def executescript(self, sql):
+        with self.lock:
+            return self.raw.executescript(sql)
+
+    def commit(self):
+        with self.lock:
+            self.raw.commit()
+
+    def close(self):
+        with self.lock:
+            self.raw.close()
+
+
 def connect(path):
-    con = sqlite3.connect(path, check_same_thread=False)
-    con.row_factory = sqlite3.Row
+    con = Connection(sqlite3.connect(path, check_same_thread=False))
+    con.raw.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     con.execute("PRAGMA journal_mode = WAL")
     con.executescript(SCHEMA)
@@ -251,4 +314,182 @@ def mail_seen(con, msgid, job_id):
 
 def mark_mail_seen(con, msgid, job_id):
     con.execute("INSERT OR IGNORE INTO mail_seen (msgid, job_id) VALUES (?, ?)", (msgid, job_id))
+    con.commit()
+
+
+# Accounts. Tokens are random and only their SHA-256 is stored, so a copy of the database cannot be used to sign in.
+
+ROLES = ("owner", "helper")
+SESSION_DAYS = 365
+INVITE_DAYS = 14
+_digest = lambda token: hashlib.sha256(token.encode()).hexdigest()
+
+
+def hash_password(pw):
+    salt = secrets.token_bytes(16)
+    key = hashlib.scrypt(pw.encode(), salt=salt, n=2**14, r=8, p=1)
+    return f"scrypt${salt.hex()}${key.hex()}"
+
+
+def check_password(pw, stored):
+    try:
+        _, salt, key = stored.split("$")
+        return secrets.compare_digest(hashlib.scrypt(pw.encode(), salt=bytes.fromhex(salt), n=2**14, r=8, p=1).hex(), key)
+    except (ValueError, AttributeError):
+        return False
+
+
+def count_users(con):
+    return con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+
+def add_user(con, name, role="helper", password=""):
+    cur = con.execute("INSERT INTO users (name, password, role, share_key, created_at) VALUES (?, ?, ?, ?, ?)",
+                      (name.strip(), hash_password(password) if password else "", role, secrets.token_urlsafe(18), now()))
+    con.commit()
+    return cur.lastrowid
+
+
+def get_user(con, uid):
+    r = con.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    return dict(r) if r else None
+
+
+def user_by_name(con, name):
+    r = con.execute("SELECT * FROM users WHERE lower(trim(name)) = lower(trim(?))", (name or "",)).fetchone()
+    return dict(r) if r else None
+
+
+def user_by_share_key(con, key):
+    r = con.execute("SELECT * FROM users WHERE share_key = ? AND share_key != ''", (key or "",)).fetchone()
+    return dict(r) if r else None
+
+
+def list_users(con):
+    return [dict(r) for r in con.execute("SELECT * FROM users ORDER BY role = 'helper', id")]
+
+
+def update_user(con, uid, name=None, password=None):
+    if name:
+        con.execute("UPDATE users SET name = ? WHERE id = ?", (name.strip(), uid))
+    if password:
+        con.execute("UPDATE users SET password = ? WHERE id = ?", (hash_password(password), uid))
+    con.commit()
+    return get_user(con, uid)
+
+
+def delete_user(con, uid):
+    con.execute("DELETE FROM users WHERE id = ?", (uid,))
+    con.commit()
+
+
+def new_session(con, uid):
+    token = secrets.token_urlsafe(32)
+    t = datetime.now(UTC)
+    con.execute("INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                (_digest(token), uid, t.isoformat(timespec="seconds"), (t + timedelta(days=SESSION_DAYS)).isoformat(timespec="seconds")))
+    con.execute("UPDATE users SET last_seen = ? WHERE id = ?", (now(), uid))
+    con.commit()
+    return token
+
+
+def session_user(con, token):
+    if not token:
+        return None
+    r = con.execute("SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires_at > ?",
+                    (_digest(token), now())).fetchone()
+    return dict(r) if r else None
+
+
+def end_session(con, token):
+    con.execute("DELETE FROM sessions WHERE token = ?", (_digest(token or ""),))
+    con.commit()
+
+
+def new_invite(con, name, role="helper", user_id=None, minutes=None):
+    # A link that creates an account, or with user_id signs an existing person in on a new phone.
+    token = secrets.token_urlsafe(18)
+    t = datetime.now(UTC)
+    con.execute("DELETE FROM invites WHERE expires_at <= ?", (now(),))
+    life = timedelta(minutes=minutes) if minutes else timedelta(days=INVITE_DAYS)
+    con.execute("INSERT INTO invites (token, name, role, user_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (_digest(token), name.strip(), role, user_id, t.isoformat(timespec="seconds"),
+                 (t + life).isoformat(timespec="seconds")))
+    con.commit()
+    return token
+
+
+def get_invite(con, token):
+    r = con.execute("SELECT * FROM invites WHERE token = ? AND expires_at > ?", (_digest(token or ""), now())).fetchone()
+    return dict(r) if r else None
+
+
+def use_invite(con, token):
+    con.execute("DELETE FROM invites WHERE token = ?", (_digest(token or ""),))
+    con.commit()
+
+
+def save_push(con, uid, endpoint, p256dh, auth):
+    con.execute("INSERT INTO push_subs (endpoint, user_id, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT (endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth",
+                (endpoint, uid, p256dh, auth, now()))
+    con.commit()
+
+
+def push_targets(con, user_ids=None, role=None):
+    q, args = "SELECT p.* FROM push_subs p JOIN users u ON u.id = p.user_id WHERE 1 = 1", []
+    if user_ids is not None:
+        ids = [int(i) for i in user_ids if i] or [-1]
+        q += f" AND u.id IN ({','.join('?' * len(ids))})"
+        args += ids
+    if role:
+        q += " AND u.role = ?"
+        args.append(role)
+    return [dict(r) for r in con.execute(q, args)]
+
+
+def has_push(con, uid):
+    return con.execute("SELECT 1 FROM push_subs WHERE user_id = ?", (uid,)).fetchone() is not None
+
+
+def drop_push(con, endpoint):
+    con.execute("DELETE FROM push_subs WHERE endpoint = ?", (endpoint,))
+    con.commit()
+
+
+# Mails to and from companies, shown in the inbox and on each job
+
+MAIL_FIELDS = ("id", "job_id", "msgid", "date", "kind", "sender", "sender_name", "subject", "body", "seen", "created_at")
+
+
+def add_mail(con, job_id, e):
+    seen = 1 if e["kind"] == "sent" else 0
+    con.execute("INSERT OR IGNORE INTO mails (job_id, msgid, date, kind, sender, sender_name, subject, body, seen, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (job_id, e["msgid"], e.get("date") or "", e["kind"], e.get("from") or "", e.get("name") or "", e.get("subject") or "",
+                 e.get("body") or "", seen, now()))
+    con.commit()
+
+
+def list_mails(con, job_id=None, received_only=False, limit=200):
+    q = ("SELECT m.*, j.company AS company, j.role AS role FROM mails m JOIN jobs j ON j.id = m.job_id WHERE 1 = 1")
+    args = []
+    if job_id:
+        q += " AND m.job_id = ?"
+        args.append(job_id)
+    if received_only:
+        q += " AND m.kind != 'sent'"
+    q += " ORDER BY m.date DESC, m.id DESC LIMIT ?"
+    return [dict(r) for r in con.execute(q, [*args, limit])]
+
+
+def unseen_mails(con):
+    return con.execute("SELECT COUNT(*) FROM mails WHERE seen = 0").fetchone()[0]
+
+
+def mark_mails_seen(con, job_id=None, ids=None):
+    if job_id:
+        con.execute("UPDATE mails SET seen = 1 WHERE job_id = ?", (job_id,))
+    for i in ids or []:
+        con.execute("UPDATE mails SET seen = 1 WHERE id = ?", (int(i),))
     con.commit()

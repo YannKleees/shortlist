@@ -121,3 +121,23 @@ test("summarize counts what needs attention", () => {
   ], TODAY);
   assert.deepEqual(s, { toApply: 2, applied: 3, waiting: 2, due: 1 });
 });
+
+import { searchJobs, nextAction } from "../logic.js";
+
+test("searchJobs puts company matches first and ignores accents", () => {
+  const jobs = [
+    { id: "a", company: "Société Générale", role: "Data Analyst", location: "Luxembourg", score: 60 },
+    { id: "b", company: "Northwind", role: "Senior Data Scientist", location: "Esch", score: 30 },
+    { id: "c", company: "Data Corp", role: "Intern", location: "Belval", score: 50 },
+  ];
+  assert.deepEqual(searchJobs(jobs, "data").map(j => j.id), ["c", "a", "b"]);
+  assert.deepEqual(searchJobs(jobs, "societe").map(j => j.id), ["a"]);
+  assert.deepEqual(searchJobs(jobs, "  "), []);
+});
+
+test("nextAction names the one thing to do", () => {
+  assert.equal(nextAction({ status: "To apply", hasText: false }, TODAY).text, "Paste the job text");
+  assert.equal(nextAction({ status: "To apply", hasText: true, deadline: "2026-11-09" }, TODAY).tone, "low");
+  assert.equal(nextAction({ status: "Applied", cvSent: 1, followUp: "2026-11-01" }, TODAY).text, "Follow up today");
+  assert.equal(nextAction({ status: "Applied", cvSent: 1, followUp: "2026-12-01" }, TODAY).text, "Waiting");
+});

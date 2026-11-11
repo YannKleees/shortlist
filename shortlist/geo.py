@@ -1,5 +1,6 @@
 """Distance from home: look places up once on OpenStreetMap, then measure the straight line between them."""
 
+import json
 import math
 import re
 import time
@@ -64,3 +65,42 @@ class Geocoder:
         a, b = self.locate(home), self.locate(place)
         return round(haversine_km(a, b)) if a and b else None
 
+
+
+ROUTER = "https://routing.openstreetmap.de"
+MODES = {"car": ("routed-car", "driving"), "bike": ("routed-bike", "cycling"), "walk": ("routed-foot", "walking")}
+
+
+class Router:
+    """Travel time and the way there, by car, bike or on foot, from the OpenStreetMap routing servers. Every answer is kept."""
+
+    def __init__(self, con, get=requests.get):
+        self.con, self.get = con, get
+        con.execute("CREATE TABLE IF NOT EXISTS routes (key TEXT PRIMARY KEY, minutes REAL, km REAL, line TEXT)")
+        con.commit()
+
+    def route(self, a, b, mode="car", fetch=True):
+        """{"minutes", "km", "line": [[lat, lon], ...]} from a to b, or None."""
+        if not a or not b or mode not in MODES:
+            return None
+        key = f"{mode}:{a[0]:.4f},{a[1]:.4f}:{b[0]:.4f},{b[1]:.4f}"
+        row = self.con.execute("SELECT minutes, km, line FROM routes WHERE key = ?", (key,)).fetchone()
+        if row:
+            return {"minutes": row[0], "km": row[1], "line": json.loads(row[2])} if row[0] is not None else None
+        if self.get is None or not fetch:
+            return None
+        server, profile = MODES[mode]
+        try:
+            r = self.get(f"{ROUTER}/{server}/route/v1/{profile}/{a[1]},{a[0]};{b[1]},{b[0]}",
+                         params={"overview": "simplified", "geometries": "geojson"}, headers=HEADERS, timeout=15).json()
+        except Exception:
+            return None  # offline: try again next time
+        out = None
+        if r.get("code") == "Ok" and r.get("routes"):
+            best = r["routes"][0]
+            out = {"minutes": round(best["duration"] / 60), "km": round(best["distance"] / 1000, 1),
+                   "line": [[round(y, 5), round(x, 5)] for x, y in best["geometry"]["coordinates"]]}
+        self.con.execute("INSERT OR REPLACE INTO routes (key, minutes, km, line) VALUES (?, ?, ?, ?)",
+                         (key, out and out["minutes"], out and out["km"], json.dumps(out["line"] if out else [])))
+        self.con.commit()
+        return out

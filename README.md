@@ -1,27 +1,30 @@
-# Shortlist
+# Sift
 
-A job search app that keeps everything in one place. Save a job from any link, or let your family send you links from their phone. Shortlist tells you how well each job fits and why: the field, the level, remote or hybrid, how far it is from home, the salary, the languages and your CV. It watches your job inbox to see where you applied and who answered, reminds you to follow up, and writes motivation letters with a local LLM in their own tab.
+Sift used to be called Shortlist: the repository, the Python package and the database file keep that name.
 
-Everything runs on your laptop. No account, no cloud database. The only hosted part is a small free page on GitHub Pages that helpers use to send you links.
+A job search app for you and the people who help you. Paste a link from LinkedIn, Indeed or any site, and Sift reads the posting and tells you how well it fits: the field, the level, the work setup, the distance from home, the languages, what you already have and what you would still need. It checks your CV, writes motivation letters, watches your job inbox for replies, and sends a notification to your phone when a company answers.
 
-![Shortlist](docs/screenshot.png)
+Your family gets their own account. They find a job, tap Paste, and it is in your list with its fit score. When you apply to a job they sent, they get a notification too.
 
-![Why a job fits: every reason with its points, salary and distance](docs/detail.png)
+![Sift on a phone: the job list, why a job fits, and the CV review](docs/screenshot.jpg)
 
-## Features
+## What it does
 
-1. **Save from a link.** Paste a LinkedIn, Indeed or careers page link, or the whole text a phone app shares ("Check out this job at ..."). Shortlist reads the posting once and fills in company, role, location, salary, a short summary of the job and a description of the company. Pages that block apps, such as Indeed, are saved anyway with the company and role from the shared text; paste the description later in the job and everything updates.
-2. **Why it fits.** Every job gets a score from 0 to 100 and one line per reason: field, level, work setup, distance from home, CV match and languages, each with its points. You see at a glance why a job is a top pick or a stretch.
-3. **Distance from home.** Add your address in Settings. Places are looked up once on OpenStreetMap and cached; the job shows the straight line distance in km with a link to the route.
-4. **Jobs from your family.** Settings gives you a link for helpers. They open it on their phone, add it to the home screen, and send any job in two taps: paste the link, press Send. On Android they can also share straight from the Indeed or LinkedIn app. The job arrives in your inbox and Shortlist adds it, with their name and message.
-5. **Your mail does the bookkeeping.** Connect a Gmail inbox (read only). Mails you sent to a company mark the job as applied; confirmations, replies, interview invitations and rejections land on the timeline and update the status.
-6. **Application status.** CV sent, applied on, they replied on, follow up date, deadline and next step. Marking a job as applied sets a follow up 10 days later; overdue follow ups move to the top of the list. Logging a follow up email, message or call moves the next reminder a week later.
-7. **People.** For each job, keep the recruiters you wrote to, the hiring manager, and anyone you know there: role, how you know them, email, LinkedIn, last contact and notes.
-8. **Timeline.** Log emails, messages, calls, replies, interviews, offers and rejections with a date. Logging a reply records the reply date, so the job stops counting as waiting.
-9. **Motivation letters.** A local model through Ollama writes a draft in English, French, German or Dutch from your CV and the posting. It opens in its own tab next to the job summary and the reasons it fits. Edit it there, revise it with one click (shorter, more formal, more personal, fix grammar) or your own instruction, keep every version, and download it as TXT or Word.
-10. **One file.** Jobs, people, timeline, CV, letters and settings live in `shortlist.db`, with a daily copy in `backups/` (the newest 14 are kept). Export everything as JSON, including people, timeline, letters and your CV text, and import it on another machine.
+1. **Add a job in one tap.** One box takes a link, a whole list of links (for example an answer from Claude or a message from a friend), or the job description itself. The Paste button reads what you copied. From the iPhone share sheet it works through a small Shortcut, and on Android Sift is in the share menu once installed.
+2. **Never the same job twice.** Links are reduced to the real posting, and a job with the same company and role is recognised. If the job is already there, nothing is added; if the new copy says more (for example the full text of a posting that was blocked before), the saved job gets better instead.
+3. **Finds jobs for you.** Say which job titles you want, at which level and where. Sift asks seven job sites at once (LinkedIn, jobs.lu, ICTjob.lu, Jobfinder.lu, eFinancialCareers, Amazon's job site and EURES, the European portal that carries the vacancies of the national employment agencies), keeps each job once however many sites carry it, reads the best ones and lists what it found, best fit first, with the site each one came from. While the app runs it also searches by itself twice a day, and your phone hears about the new jobs that fit. Open one to see what the job is, then save it or skip it; a skipped job never comes back.
+4. **What the job actually is.** Each job shows what you would do, taken from the posting itself, and what kind of work fills the day (modelling, reporting, data engineering, software, client work), so a "Data Scientist" who mostly builds dashboards is plain to see. Next to it: the years of experience and the degree it asks for, against your own.
+5. **Where it is.** A map shows every job as a pin, next to the list. Each job shows the way from your home and how long it takes by car, by bike and on foot, with a link to bus and train times.
+6. **Why it fits.** A score from 0 to 100 with one line per reason and its points, then the skills the posting asks for that your CV or your GitHub projects show, the ones you would still need, and the projects worth mentioning.
+7. **Accounts for helpers.** Invite your mother, a friend or a partner with a link. They are signed in when they open it, can send jobs, see every job with its fit, and write you a note on a job. They do not see your settings, letters or mail.
+8. **CV check.** Upload a PDF, Word file, LaTeX file or the zip Overleaf downloads. Every upload is checked for the basics recruiters look for: length, contact details, LinkedIn, clear sections, results in numbers, strong verbs, dates and named skills. A deep review by Claude (or your local model) scores the CV for the jobs you want and lists concrete fixes and missing keywords. Add your GitHub name under You and your public projects count as proof of skills too: Sift reads their descriptions, topics and READMEs.
+9. **Letters.** Claude or a local Ollama model writes a draft from your CV and the posting, in English, French, German, Dutch or Luxembourgish. Revise it with one tap (shorter, more formal, more personal, fix grammar) or your own words; every version is kept. Download as Word.
+10. **Company replies in the app.** Connect a Gmail inbox, read only. Replies, interview invitations and rejections appear in the Inbox and on the job, with the text of the mail, a Reply button and a link to open it in Gmail, and your phone gets a notification. Mails you sent to a company mark the job as applied.
+11. **Reminders.** Marking a job as applied sets a follow up ten days later. Once a day you get one notification with the follow ups that are due and the deadlines in the next two days.
+12. **People and timeline.** For each job: the recruiters and anyone you know there, and every email, call, reply and interview with its date.
+13. **One file.** Everything lives in `shortlist.db`, with a daily backup. Download a copy as JSON under You → Account; `POST /api/import/json` reads it back.
 
-## Quick start
+## Quick start on your computer
 
 ```bash
 git clone https://github.com/YannKleees/shortlist.git
@@ -29,171 +32,145 @@ cd shortlist
 ./start.sh          # Windows: double click start.bat
 ```
 
-The first run creates a virtual environment, installs everything, and copies `.env.example` to `.env`. The app opens at http://127.0.0.1:8000 and keeps its data in `shortlist.db` in the project folder. Options: `--db path/to/file.db`, `--port 8001`, `--no-browser`, `--no-backup`.
+The first run creates a virtual environment and installs everything. The app opens at http://127.0.0.1:8000 and asks for your name and a password: that is the owner account. Then upload your CV under You and add your first job.
 
-Prefer to manage Python yourself? `pip install -e .` and `python -m shortlist` do the same. In Chrome or Edge, use "Install app" in the address bar to get Shortlist in its own window with an icon.
+**An icon in your taskbar.** Run `.venv\Scripts\python -m shortlist.launch --shortcut` once. It puts Sift in the Start menu and on the Desktop; right click it in Start and choose **Pin to taskbar**. One click then starts Sift quietly in the background (no black window) and opens it in its own app window. It keeps checking your mail after you close the window.
 
-### First setup
+Forgot your password? `python -m shortlist --sign-in-link Yann` prints a one time sign in link.
 
-Open Settings and fill in, once:
+## Put it online, so your family and your phone can use it
 
-1. **CV.** Upload it as PDF, DOCX, TXT or MD.
-2. **You.** Your first name, home address and the languages you speak. Every score updates.
-3. **Email.** A Gmail address for your job search and an app password. Turn on 2-Step Verification for that account, then create the app password at https://myaccount.google.com/apppasswords. Shortlist checks the inbox every 10 minutes while it runs (`--mail-every 0` turns that off), or when you click Check now.
-4. **Helpers.** Type their name, click Copy link and send it to them, for example on WhatsApp.
+On your computer alone, Sift works fully, but your mother cannot reach it and your phone gets no notifications. Notifications on an iPhone also need a secure https address. Two ways:
 
-### The helper page
+**Free: from your own computer, with Tailscale Funnel.** Install [Tailscale](https://tailscale.com), sign in, and run `tailscale funnel 8000` while Sift runs. You get a fixed address like `https://laptop.tail1234.ts.net`. Put it in `.env` as `SHORTLIST_PUBLIC_URL`, restart, and invite people. It works whenever your computer is on and awake.
 
-The helper page is `docs/index.html`, served by GitHub Pages at `https://<you>.github.io/shortlist/`. It is a static page with no backend: it opens the helper's mail app with the link, their name and their message filled in, addressed to your job inbox. Your address is in the link you send, not in the page, and the page remembers it on their phone. It speaks English, German or French, following the phone's language. To host your own, enable GitHub Pages for the `docs` folder of your fork and set `SHORTLIST_HELPER_PAGE` to its address.
-
-### With Docker
-
-Docker runs the app and Ollama side by side, so you do not need Python or Ollama installed:
+**Always on: Fly.io, about 3 to 4 euros a month.** A small server in Amsterdam keeps checking your mail and sends notifications while your computer is off. With the [Fly CLI](https://fly.io/docs/flyctl/install/):
 
 ```bash
-cp .env.example .env              # optional settings
-docker compose up -d --build      # or: make docker-up
+fly launch --no-deploy --copy-config          # choose a unique app name
+fly volumes create shortlist_data --size 1 --region ams
+fly secrets set ANTHROPIC_API_KEY=sk-ant-... SHORTLIST_PUBLIC_URL=https://<your-app>.fly.dev
+fly deploy
 ```
 
-Open http://localhost:8000. On the first start, a one off `ollama-pull` container downloads the letter model (about 5 GB) into a volume; follow it with `docker compose logs -f ollama-pull`. With an NVIDIA GPU and the NVIDIA Container Toolkit, use the GPU override for much faster letters:
+A server cannot run a local model, so online Sift writes letters with Claude. A letter costs a few cents. Move your data over with the copy from You → Account and `POST /api/import/json`.
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build   # or: make docker-gpu
-```
+### On the iPhone
 
-| Volume | Holds |
-|---|---|
-| `shortlist-data` | `shortlist.db`: jobs, people, timeline, CV, letters, settings |
-| `ollama-models` | downloaded models |
+1. Open your Sift address in Safari, tap Share, then **Add to Home Screen**. From then on it opens like an app.
+2. Open it from the Home Screen, go to You (or Account), and turn on **Notifications**. iOS 16.4 or newer.
+3. Optional, for one tap sharing from LinkedIn: make a Shortcut with one action, **Get Contents of URL**, that POSTs `{"text": Shortcut Input}` to your personal address (`GET /api/me` returns it as `shareUrl`). Turn on Show in Share Sheet.
 
-Both ports are bound to `127.0.0.1`, so nothing is reachable from your network. The app runs as a non-root user and has a health check. Back up the database with `make backup`, and change the model with `OLLAMA_MODEL=qwen2.5:7b docker compose up -d`.
+### Inviting your family
 
-For motivation letters, install [Ollama](https://ollama.com) and pull a model once:
-
-```bash
-ollama pull llama3.1:8b
-```
-
-You can switch the model in the app by clicking the model name in the header. Good options are `llama3.1:8b` for English and `qwen2.5:7b` or `mistral-nemo` for French and German. With a GPU, letters take a few seconds; on a laptop CPU, up to a minute.
-
-## Reading LinkedIn and Indeed links
-
-Neither LinkedIn nor Indeed offers a job API for individuals, and scraping them breaks their terms of service. Shortlist only reads the single public page you paste, once, when you save it. It reduces the link to the canonical posting URL (so the same job is never saved twice) and takes company, role, location and text from the page's structured data. For LinkedIn it uses the public job card, which needs no login. Indeed blocks apps completely, so Indeed jobs are saved from the shared text, and the job asks you to paste the description.
+Under You, Family and helpers, type their name and tap **Create invite link**, then **Send link** to share it on WhatsApp or by text. The link works once, for 14 days. If they get a new phone, tap **New link** next to their name.
 
 ## How the fit score works
 
-A rule based extractor reads seniority, minimum years, domain, work setup, job type and required languages from the job title and the posting. The title decides the level first, so "mentoring from senior data scientists" does not make an internship senior. Years only count next to the word experience, so "founded 150 years ago" is ignored, and a language only counts as required when the posting asks you to speak it and does not call it a plus. A TF-IDF similarity compares the posting with your CV. Together they give a score from 0 to 100, a fit label (Top pick, Good, Maybe, Stretch) and plain sentences for the pros and cons. With `ANTHROPIC_API_KEY` set and `pip install -e ".[claude]"`, Claude does the extraction instead through a forced tool call with a fixed JSON schema, which handles context like "Dutch is a plus".
+A rule based extractor reads seniority, minimum years, field, work setup, job type and required languages from the title and the posting. The title decides the level first, so "mentoring from senior data scientists" does not make an internship senior. Years only count next to the word experience, and a language only counts as required when the posting asks for it and does not call it a plus. A list of about fifty named skills gives what you have and what you would need, and the share you have is the CV match. With a Claude key, Claude does the extraction instead.
 
-| Component | Points | Highest when |
+| Part | Points | Highest when |
 |---|---|---|
-| Data science content | 35 | data science or ML work |
-| Junior fit | 30 | internship, trainee, working student, 0 to 1 year |
-| Work setup | 15 | hybrid |
-| Distance | 10 | up to 20 km from home, or remote (without a home address: Luxembourg area or the Netherlands) |
-| CV similarity | 10 | posting close to your CV |
+| Field | 35 | the job title is one you asked for |
+| Level | 30 | a level you asked for, and no more years of experience than you have plus one |
+| Work setup | 15 | the setup you prefer (hybrid when you have no preference) |
+| Distance | 10 | up to 20 km from home, or remote |
+| CV match | 10 | your CV and projects show every skill the posting names |
 
-Requiring a language you do not speak costs 15 points. Senior roles and 3 or more years of experience are capped at 35. Uploading a new CV, or changing your home or languages, updates every saved job; your own edits stay.
+A required language you do not speak costs 15 points. A degree above yours (a PhD when you have a Master's) costs 10; a Master's that is asked for while yours is still running is shown, and costs nothing. Senior roles, and jobs that ask for three or more years beyond your own, are capped at 35.
 
-## Letters
+What you asked for lives under You → What you are looking for: job titles, levels, work setup, where to search, your years of experience. Your degrees are read from the education lines of your CV. Changing any of it, or the CV, home or language list, updates every job; your own edits stay. Before you fill it in, the general weights in `shortlist/score.py` apply.
 
-Open a job, scroll to Motivation letter, click Open in new tab, choose the language and click Write draft. Edit the text directly and save, or use the Revise buttons: each revision becomes a new version, so you can always go back. The prompt gives the model your CV, the posting and the language, and tells it to use only facts from those two texts, write 250 to 350 words in four paragraphs, and avoid placeholders. Treat every draft as a draft: local models still make things up now and then, so read it before sending.
+Finding jobs is `shortlist/discover.py`. Each site is one small function that takes a job title and a place and returns listings, so adding a site is adding one function to `SOURCES`. Every site is asked the way a visitor's browser asks it, without an account. A site that answers with a captcha or a login wall is not a source, and nothing in the code tries to get around one: that rules out Indeed, Monster, Moovijob and Glassdoor (Moovijob's vacancies still arrive through EURES). jobs.lu, ICTjob.lu and Jobfinder.lu are asked only when you search in Luxembourg; EURES, eFinancialCareers and Amazon for any country the code knows by name. LinkedIn's and eFinancialCareers' terms do not welcome automated reading, so the volume is kept to a handful of requests per search; leave them out of `SOURCES` if you would rather not.
+
+What the job is comes from `shortlist/brief.py`, with plain rules and no model: the bullets under the heading that says what you do (in English, French or German), the kinds of work counted by the words the posting uses, and the sentence that names a degree.
 
 ## Configuration
 
+Put these in `.env` (copied from `.env.example` on the first start), or set them on your host.
+
 | Variable | Default | Purpose |
 |---|---|---|
+| `SHORTLIST_PUBLIC_URL` | none | the https address people use, for invite links and the share button |
+| `ANTHROPIC_API_KEY` | none | Claude for letters, CV reviews and extraction; can also be set in the app |
+| `SHORTLIST_LETTER_MODEL` | `claude-opus-5-5` | Claude model for letters and reviews |
+| `OLLAMA_URL`, `OLLAMA_MODEL` | `http://localhost:11434`, `llama3.1:8b` | local model when there is no Claude key |
 | `SHORTLIST_DB` | `shortlist.db` | database file |
-| `SHORTLIST_BACKUPS` | `backups/` next to the database | folder for the daily database copies |
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama address |
-| `OLLAMA_MODEL` | `llama3.1:8b` | model for letters |
-| `ANTHROPIC_API_KEY` | none | optional Claude extraction |
+| `SHORTLIST_BACKUPS` | `backups/` next to the database | daily copies, the newest 14 are kept |
 | `SHORTLIST_MAIL_MINUTES` | `10` | minutes between mail checks, 0 for by hand only |
-| `SHORTLIST_HELPER_PAGE` | `https://yannkleees.github.io/shortlist/` | the helper page the Settings link points to |
 
-Settings changed in the app are stored in the database and override the defaults.
+Start options: `--db`, `--port`, `--host`, `--no-browser`, `--no-backup`, `--mail-every`, `--sign-in-link NAME`.
+
+### With Docker
+
+`docker compose up -d --build` runs Sift and Ollama side by side on http://localhost:8000, with the database in the `shortlist-data` volume. Add `-f docker-compose.gpu.yml` for an NVIDIA GPU. `make backup` copies the database out.
+
+## Security and privacy
+
+Passwords are hashed with scrypt. Sessions and invite links are random tokens of which only a SHA-256 is stored, so a copy of the database cannot be used to sign in. The session cookie is HttpOnly, SameSite=Lax and Secure on https, and requests that change data from another site are refused. Ten wrong passwords lock sign in for ten minutes. Helpers can only read jobs, add jobs and write notes.
+
+`shortlist.db`, backups, exports, `.env` and CV files are in `.gitignore`. The outgoing requests are the job pages you add, the public job search of the seven sites listed under Find when you use it (one request per job title and site, a second apart, then the postings you open), a Wikipedia lookup for the company, OpenStreetMap for places, map tiles and travel times (Nominatim, tile.openstreetmap.org, routing.openstreetmap.de), your Gmail inbox over IMAP (read only), your public GitHub repositories if you add your name, Claude if you set a key, and the push services of Apple, Google and Mozilla for notifications. The Gmail app password and the Claude key stay in the database on your machine or server and are never shown again or exported.
 
 ## API
 
-The web page uses a small JSON API that you can also script against. Interactive docs are at http://127.0.0.1:8000/docs.
+The app is a small JSON API that you can also script against; interactive docs are at `/docs`.
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/status` | CV and LLM status |
-| `GET, POST /api/jobs` | list jobs or add one by hand |
-| `POST /api/jobs/import-link` | save a job from a link or shared text; never fails on unreadable pages |
-| `POST /api/jobs/{id}/text` | add the job description for a page that could not be read |
-| `POST /api/mail/check` | read new jobs and application mails from your inbox |
-| `PUT /api/settings` | home, languages, mail, model |
-| `GET, PATCH, DELETE /api/jobs/{id}` | one job with its people, timeline and letters; update; delete |
-| `POST /api/jobs/{id}/contacts`, `PATCH, DELETE /api/contacts/{id}` | people |
-| `POST /api/jobs/{id}/events`, `DELETE /api/events/{id}` | timeline |
-| `POST /api/cv` | upload your CV |
-| `GET, POST /api/jobs/{id}/letters` | list or write letter drafts |
-| `PUT /api/letters/{id}`, `POST /api/letters/{id}/revise`, `GET /api/letters/{id}/download` | edit, revise or download a letter |
-| `POST /api/import/json`, `GET /api/export` | move everything between machines |
-
-## Data model
-
-| Table | Holds |
-|---|---|
-| `jobs` | posting, summary, company description, score and reasons, salary, distance, who sent it, status, CV sent, applied, replied, follow up and deadline dates |
-| `contacts` | people per job: name, role, relation, email, LinkedIn, phone, last contact, notes |
-| `events` | timeline per job: date, kind, text |
-| `letters` | every letter version per job |
-| `cv`, `settings` | your CV and app settings, including the mail app password |
-| `places`, `mail_seen` | cached map lookups, and mails already turned into timeline entries |
-
-Deleting a job deletes its people, timeline and letters. Older databases are migrated in place on start.
-
-## Privacy
-
-`shortlist.db`, backups, exports and CV files are in `.gitignore`. The server listens on `127.0.0.1` only. Letters are written locally by Ollama. The outgoing requests are the job page you paste, a Wikipedia lookup for the company description, OpenStreetMap lookups for your home and the job towns, your Gmail inbox over IMAP (read only, nothing is marked read, moved or deleted), and Claude if you set an API key. The Gmail app password is stored in `shortlist.db` on your laptop and is never shown again or exported; revoke it any time in your Google account.
-
-## Limitations
-
-1. Indeed, and sometimes LinkedIn, block apps. The job is still saved from the shared text; paste the description to complete it.
-2. Helpers' jobs arrive when Shortlist runs and checks the inbox. Until then they wait safely in the mail.
-3. The distance is a straight line, not the drive. The route link opens the real route.
-4. The Wikipedia description only appears for companies with an article; otherwise write one line yourself.
-5. Rule extraction misses nuance that the optional Claude extraction catches.
-6. Local 7B and 8B models write decent first drafts, but you should always edit them.
+| `GET /api/auth/state`, `POST /api/auth/setup`, `/login`, `/logout`, `/join` | accounts and invitations |
+| `GET, PUT /api/me` | your name and password, your share address |
+| `GET /api/people`, `POST /api/people/invite`, `POST /api/people/{id}/link`, `DELETE /api/people/{id}` | helpers (owner) |
+| `POST /api/jobs/add` | add anything pasted: a link, a list of links or a job text; says what was added, already there or improved |
+| `POST /api/share?key=...` | the same for the iPhone share sheet, with a personal key instead of a sign in |
+| `GET, POST /api/jobs`, `GET, PATCH, DELETE /api/jobs/{id}` | jobs |
+| `POST /api/jobs/{id}/text`, `/notes`, `/contacts`, `/events`, `/letters` | job text, helper notes, people, timeline, letters |
+| `GET /api/finds`, `POST /api/finds/search`, `POST /api/finds/{id}/read`, `/save`, `/skip` | jobs found for your profile: search, read one in full, save or skip it |
+| `POST /api/cv`, `POST /api/cv/review` | upload and review your CV |
+| `PUT /api/github`, `POST /api/github/refresh` | add your GitHub name, read your projects again |
+| `POST /api/push/subscribe`, `/api/push/test` | notifications |
+| `GET /api/mails`, `POST /api/mails/seen` | the inbox: replies with their text, and what you have read |
+| `POST /api/mail/check`, `PUT /api/settings`, `GET /api/export`, `POST /api/import/json` | mail, settings, moving data |
 
 ## Tests
 
 ```bash
 pip install -e ".[dev]"
-pytest -q        # database, migration, CV parsing, link parsing, people, timeline, letters, scoring, API
+pytest -q        # accounts, permissions, adding and merging jobs, finding jobs, what a job is, notifications, CV review, letters, mail, scoring
 npm test         # front end logic
-ruff check .     # lint
+ruff check .
 ```
 
-GitHub Actions runs the linter, both test suites on Python 3.11 and 3.13, and builds and smoke tests the Docker image on every push.
+GitHub Actions runs the linter, both test suites on Python 3.11 and 3.13, and builds and smoke tests the Docker image.
 
 ## Project structure
 
 ```
 shortlist/
-  __main__.py     start the server
-  server.py       FastAPI app and JSON API
-  db.py           SQLite schema, migration and queries
-  ingest.py       reading links and shared text; summaries; company descriptions
-  mail.py         read only Gmail/IMAP: shared jobs, applications, replies
-  geo.py          OpenStreetMap lookups and distance from home
-  cvparse.py      text from PDF, DOCX, TXT, MD
-  letters.py      Ollama letters and Word export
-  extract.py      rule and Claude extraction, salary
-  similarity.py   CV similarity
-  score.py        score and the reasons behind it
-  scoring.py      glue between extraction and scoring
-web/              the app (Tailwind, vanilla JS); letter.html is the letter tab
-docs/             the helper page for GitHub Pages, and the screenshots
-tests/            pytest suite
-examples/         example CV
-start.sh, start.bat   one command setup and start
-Dockerfile, docker-compose.yml, docker-compose.gpu.yml   containers for the app and Ollama
-Makefile          shortcuts: run, test, lint, docker-up, docker-gpu, backup
-.env.example      configuration template
+  server.py       FastAPI app: accounts, permissions, JSON API
+  db.py           SQLite schema, migration, queries, accounts and sessions
+  ingest.py       reading links, shared text and pasted postings
+  scoring.py, score.py, extract.py, skills.py, similarity.py   fit score, reasons, have and need
+  brief.py        what a job is: tasks, kinds of work, the degree asked against yours
+  discover.py     finding jobs: the job sites it asks, telling the same job on two sites apart, and what was found, saved or skipped
+  cvreview.py     CV checks and the deep review
+  llm.py          Claude or Ollama
+  letters.py      letter prompts and Word export
+  push.py         Web Push notifications
+  mail.py         read only Gmail: shared jobs, applications, replies
+  launch.py       the taskbar icon: starts the server quietly and opens the app window
+  geo.py          OpenStreetMap places, distances and routes
+web/              the app: one page, plain JavaScript and CSS, a service worker for notifications
+docs/             the older mail based helper page (still works) and the screenshot
+fly.toml          always on hosting on Fly.io
 ```
+
+## Design notes
+
+The interface is built for a phone first and for people who do not like technology. Every button is at least 44 points tall, the main action sits in the thumb zone of the tab bar, and the layout respects the iPhone's safe areas. Colours are defined in OKLCH so light and dark mode keep the same contrast. Titles use Bricolage Grotesque (self hosted, SIL Open Font License) with a metric matched fallback, body text the system font, and numbers rounded tabular figures, so scores and counts never jiggle.
+
+The look is black on white and nothing else: hairlines instead of boxes, weight instead of colour. How well a job fits shows in how full its score box is (solid, outlined, thin, dashed), and the kinds of work are one bar in shades of grey. The only colour is a red for errors and for deleting. Text is Bricolage Grotesque; numbers and small labels are IBM Plex Mono. The map is Leaflet (in `web/vendor`, BSD licence) on OpenStreetMap tiles in grey, so pins and routes stand out.
+
+Motion has a job to do. Screens slide in the direction you move: deeper to the right, back to the left, tabs sideways in tab bar order, while the job's title and score glide from the list into the job page. The list switcher and every press spring a little. Each screen leads with the one thing to do next; details such as the reasons behind a score, dates and the timeline wait behind one tap. Sheets spring up from the bottom and can be pulled down, menus grow from the button that opened them, folds open with a real height animation, and applying for a job sets off a small burst of confetti. Everything is interruptible, uses only transform and opacity where it moves, and calms down when the phone asks for reduced motion.
 
 ## License
 

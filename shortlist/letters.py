@@ -8,7 +8,8 @@ DEFAULT_MODEL = "llama3.1:8b"
 
 SYSTEM = """You write motivation letters for job applications.
 Rules:
-1. Use only facts from the CV and the posting. Never invent experience, grades, projects, dates or skills.
+1. Use only facts from the CV (which may end with the candidate's GitHub projects) and the posting. Never invent experience,
+   grades, projects, dates or skills. Name a GitHub project only when it clearly matches the posting.
 2. Write in {language}, in the formal register usual for that language.
 3. 250 to 350 words, four short paragraphs: why this role and company, two or three concrete matches between the CV
    and the posting, what the candidate wants to learn and contribute, a short closing.

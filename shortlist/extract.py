@@ -64,7 +64,7 @@ INTERN = r"\bintern(ship)?\b|\bstage\b|praktikum|trainee|working student|werkstu
 JUNIOR = r"\bjunior\b|graduate|entry[- ]level"
 # In a title any of these words means a senior role. In the posting text, "senior" only counts when it names the role
 # itself, so "mentoring from senior data scientists" does not make an internship senior.
-SENIOR_TITLE = r"\bsenior\b|\bsr\b|\blead\b|principal|head of|\bstaff\b|\bmanager\b"
+SENIOR_TITLE = r"\bs[eé]nior\b|\bsr\b|\blead\b|principal|head of|\bstaff\b|\bmanager\b|\bdirect(?:or|eur|rice)\b|vice president|\bvp\b|\bchief\b"
 SENIOR_TEXT = r"\bsenior\s+(?:\w+\s+)?(?:scientist|engineer|analyst|developer|consultant|manager|position|role)\b(?!s)|senior[- ]level"
 DOMAIN_RULES = [
     ("data_science", r"data scien"),
@@ -73,7 +73,7 @@ DOMAIN_RULES = [
     ("data_engineering", r"data engineer|\betl\b|\bspark\b"),
     ("analytics", r"analyst|analytics|power bi|\bbi\b|reporting"),
 ]
-YEARS = re.compile(r"(?<![\d.,])(\d{1,2})\s*(?:\+|(?:-|–|to)\s*\d{1,2})?\s*\+?\s*(?:years?|yrs|ans|années|jahre)\b")
+YEARS = re.compile(r"(?<![\d.,])(\d{1,2})\s*(?:\+|(?:-|–|to|à|et|bis|and|or)\s*\d{1,2})?\s*\+?\s*(?:years?|yrs|ans|années|jahre)\b")
 EXPERIENCE = re.compile(r"experience|expérience|erfahrung|track record|background in|worked|working in", re.I)
 NOT_EXPERIENCE = re.compile(r"founded|history|since|ago|\bold\b|anniversary|established|existence|contract|duration", re.I)
 LANG_CONTEXT = re.compile(r"fluen|native|proficien|speak|spoken|written|language|knowledge of|command of|mother tongue|bilingual|"

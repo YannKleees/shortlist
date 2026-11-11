@@ -4,7 +4,7 @@ import sqlite3
 
 import docx
 import pytest
-from fastapi.testclient import TestClient
+from conftest import signed_in
 
 from shortlist import cvparse, db, ingest, letters
 from shortlist.server import create_app
@@ -176,7 +176,7 @@ def client(tmp_path):
     def get(url, params=None, timeout=None, headers=None):
         return FakeResp({"models": [{"name": "llama3.1:8b"}]})
 
-    return TestClient(create_app(tmp_path / "api.db", fetch=fetch, llm_post=post, llm_get=get, wiki_get=None))
+    return signed_in(create_app(tmp_path / "api.db", fetch=fetch, llm_post=post, llm_get=get, wiki_get=None))
 
 
 def test_api_import_link_fills_overview(client):
@@ -193,7 +193,7 @@ def test_api_import_link_fills_overview(client):
 def test_api_pasted_text_needs_no_fetch(tmp_path):
     def fetch(url):
         raise RuntimeError("login wall")
-    c = TestClient(create_app(tmp_path / "p.db", fetch=fetch, wiki_get=None))
+    c = signed_in(create_app(tmp_path / "p.db", fetch=fetch, wiki_get=None))
     url = "https://www.linkedin.com/jobs/view/4055555555/"
     r = c.post("/api/jobs/import-link", json={"url": url, "company": "Acme", "role": "NLP Intern", "text": "NLP internship, hybrid, Python. " * 12})
     assert r.status_code == 200 and r.json()["summary"].startswith("NLP internship") and r.json()["hasText"]
@@ -202,7 +202,7 @@ def test_api_pasted_text_needs_no_fetch(tmp_path):
 def test_api_unreadable_link_is_saved_and_text_can_follow(tmp_path):
     def fetch(url):
         raise RuntimeError("403 blocked")
-    c = TestClient(create_app(tmp_path / "p.db", fetch=fetch, wiki_get=None, geo_get=None))
+    c = signed_in(create_app(tmp_path / "p.db", fetch=fetch, wiki_get=None, geo_get=None))
     shared = "Data Analyst - Contoso Bank - Luxembourg\nhttps://lu.indeed.com/m/viewjob?jk=abc123&from=share"
     j = c.post("/api/jobs/import-link", json={"url": shared, "addedBy": "Mama", "note": "Looks good"}).json()
     assert (j["company"], j["role"], j["location"], j["addedBy"], j["hasText"]) == ("Contoso Bank", "Data Analyst", "Luxembourg", "Mama", False)
@@ -264,7 +264,7 @@ def test_api_json_import_export_and_static(client):
     r = client.post("/api/import/json", files={"file": ("e.json", json.dumps(data).encode(), "application/json")})
     assert r.json()["added"] == 1
     assert client.get("/api/export").json()["jobs"][0]["company"] == "Gamma"
-    assert "Shortlist" in client.get("/").text
+    assert "Sift" in client.get("/").text
 
 
 def test_env_file_fills_missing_variables(tmp_path, monkeypatch):
@@ -311,7 +311,7 @@ def test_api_export_round_trip_keeps_people_timeline_letters_and_cv(client, tmp_
     assert r.headers["content-disposition"].startswith('attachment; filename="shortlist-export-')
     dump = r.content
 
-    other = TestClient(create_app(tmp_path / "other.db", wiki_get=None))
+    other = signed_in(create_app(tmp_path / "other.db", wiki_get=None))
     for _ in range(2):  # importing twice must not duplicate anything
         assert other.post("/api/import/json", files={"file": ("e.json", dump, "application/json")}).status_code == 200
     j = other.get(f"/api/jobs/{jid}").json()
@@ -343,3 +343,10 @@ def test_shared_text_from_phone_apps():
     assert ingest.parse_shared("Data Analyst - Contoso Bank - Luxembourg") == {"role": "Data Analyst", "company": "Contoso Bank", "location": "Luxembourg"}
     assert ingest.parse_shared("ML Engineer at Fabrikam")["company"] == "Fabrikam"
     assert ingest.looks_like_job("https://lu.indeed.com/viewjob?jk=1") and not ingest.looks_like_job("https://example.com/blog/post")
+
+
+def test_linkedin_title_with_at_and_a_dash():
+    from shortlist import ingest
+    html = '<html><head><meta property="og:title" content="Data Scientist at VML — Luxembourg, Luxembourg | LinkedIn Jobs"></head><body>x</body></html>'
+    p = ingest.parse_posting(html, "https://www.linkedin.com/jobs/view/1234567/")
+    assert (p["company"], p["role"], p["location"]) == ("VML", "Data Scientist", "Luxembourg, Luxembourg")

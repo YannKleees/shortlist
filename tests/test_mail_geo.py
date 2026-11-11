@@ -2,7 +2,7 @@ import re
 import sqlite3
 from email.message import EmailMessage
 
-from fastapi.testclient import TestClient
+from conftest import signed_in
 
 from shortlist import geo, mail
 from shortlist.score import explain
@@ -116,7 +116,7 @@ def test_check_mail_adds_shared_jobs_and_marks_applications(tmp_path):
         (3, False, raw(3, "hr@contoso.example", ME, "Your application at Contoso Bank",
                        "Thank you. Unfortunately we decided to move forward with other candidates.", day="Fri, 07 Nov 2026 09:00:00 +0100")),
     ])
-    c = TestClient(create_app(tmp_path / "m.db", fetch=fetch, wiki_get=None, geo_get=None, imap_factory=box))
+    c = signed_in(create_app(tmp_path / "m.db", fetch=fetch, wiki_get=None, geo_get=None, imap_factory=box))
     assert c.post("/api/mail/check").json()["ok"] is False, "not set up yet"
     c.put("/api/settings", json={"mail_address": ME, "mail_password": "rig ht"})
     assert c.post("/api/mail/check").json() == {"ok": True, "added": 1, "applied": 1, "replies": 1, "message": ""}
@@ -124,6 +124,14 @@ def test_check_mail_adds_shared_jobs_and_marks_applications(tmp_path):
     assert (j["company"], j["addedBy"], j["status"], j["appliedOn"], j["repliedOn"]) == ("Contoso Bank", "Mama", "Rejected", "2026-11-04", "2026-11-07")
     kinds = [e["kind"] for e in c.get(f"/api/jobs/{j['id']}").json()["events"]]
     assert kinds.count("Rejection") == 1 and "Email sent" in kinds and "Note" in kinds
+
+    inbox = c.get("/api/mails").json()
+    assert inbox["unseen"] == 1 and [m["kind"] for m in inbox["mails"]] == ["rejection"]
+    assert "Unfortunately we decided" in inbox["mails"][0]["body"] and inbox["mails"][0]["company"] == "Contoso Bank"
+    assert inbox["mails"][0]["gmail"].endswith("rfc822msgid%3Am3@test")
+    assert [m["kind"] for m in c.get("/api/mails?all=true").json()["mails"]] == ["rejection", "sent"]
+    assert len(c.get(f"/api/jobs/{j['id']}").json()["mails"]) == 2
+    assert c.post("/api/mails/seen", json={"jobId": j["id"]}).json()["unseen"] == 0
 
     again = c.post("/api/mail/check").json()
     assert (again["added"], again["applied"], again["replies"]) == (0, 0, 0), "nothing twice"
@@ -134,9 +142,45 @@ def test_check_mail_adds_shared_jobs_and_marks_applications(tmp_path):
 
 
 def test_settings_home_and_languages_rescore(tmp_path):
-    c = TestClient(create_app(tmp_path / "s.db", wiki_get=None, geo_get=fake_geo()))
+    c = signed_in(create_app(tmp_path / "s.db", wiki_get=None, geo_get=fake_geo()))
     jid = c.post("/api/jobs", json={"company": "Acme", "role": "Data Science Intern", "location": "Esch-sur-Alzette"}).json()["id"]
     st = c.put("/api/settings", json={"home": "Luxembourg", "languages": "English, Dutch"}).json()
     assert st["home"] == "Luxembourg" and st["languages"] == "English, Dutch"
     j = c.get(f"/api/jobs/{jid}").json()
     assert j["distanceKm"] == 17 and any(p["note"] == "17 km from home." for p in j["reasons"])
+
+
+def test_map_and_travel_times(tmp_path):
+    from types import SimpleNamespace
+
+    from conftest import signed_in
+
+    from shortlist import db
+    from shortlist.server import create_app
+    calls = []
+
+    def get(url, params=None, **kw):
+        calls.append(url)
+        if "nominatim" in url:
+            spot = {"lat": "49.71", "lon": "6.25"} if "junglinster" in params["q"] else {"lat": "49.61", "lon": "6.13"}
+            return SimpleNamespace(json=lambda: [spot])
+        minutes = {"routed-car": 21, "routed-bike": 50, "routed-foot": 240}[url.split("/")[3]]
+        return SimpleNamespace(json=lambda: {"code": "Ok", "routes": [{"duration": minutes * 60, "distance": 16683,
+                                                                      "geometry": {"coordinates": [[6.25, 49.71], [6.13, 49.61]]}}]})
+
+    c = signed_in(create_app(tmp_path / "m.db", fetch=None, wiki_get=None, geo_get=get, env={}))
+    con = db.connect(tmp_path / "m.db")
+    db.upsert_job(con, {"id": "a", "company": "Northwind", "role": "Analyst", "location": "Luxembourg", "score": 70, "fit": "Good"})
+    db.upsert_job(con, {"id": "b", "company": "Far", "role": "Analyst", "location": "Anywhere", "work_setup": "Remote"})
+    assert c.get("/api/map").json() == {"home": None, "jobs": [{"id": "a", "company": "Northwind", "role": "Analyst", "score": 70, "fit": "Good",
+                                                              "status": "To apply", "lat": 49.61, "lon": 6.13, "minutes": None}]}
+    c.put("/api/settings", json={"home": "1 rue X, Junglinster"})
+    m = c.get("/api/map").json()
+    assert m["home"] == {"lat": 49.71, "lon": 6.25} and m["jobs"][0]["minutes"] == 21
+    t = c.get("/api/jobs/a/travel").json()
+    assert {k: v["minutes"] for k, v in t["modes"].items()} == {"car": 21, "bike": 50, "walk": 240}
+    assert t["modes"]["car"]["km"] == 16.7 and t["modes"]["car"]["line"] == [[49.71, 6.25], [49.61, 6.13]]
+    n = len(calls)
+    c.get("/api/jobs/a/travel")
+    assert len(calls) == n, "routes are kept, not asked for again"
+    assert c.get("/api/jobs/b/travel").json()["modes"] == {}

@@ -46,8 +46,30 @@ def fetch(url):
     return r.text
 
 
+def post_json(url, body):
+    """For the job sites whose public search takes its question as JSON."""
+    r = requests.post(url, json=body, headers=HEADERS, timeout=20)
+    r.raise_for_status()
+    return r.text
+
+
 def _clean(text):
     return " ".join(BeautifulSoup(text, "html.parser").get_text(" ").split())
+
+
+def text_lines(node):
+    """The readable text of a piece of HTML with its line breaks kept: one paragraph, heading or bullet per line.
+    The sections of a posting (what you do, what they ask for) can only be told apart when the lines survive."""
+    soup = BeautifulSoup(node, "html.parser") if isinstance(node, str) else node
+    for br in soup.find_all("br"):
+        br.replace_with("\n")
+    for li in soup.find_all("li"):
+        li.insert(0, "\n• ")
+    for block in soup.find_all(["p", "div", "li", "h1", "h2", "h3", "h4", "h5", "ul", "ol", "tr", "section"]):
+        block.insert(0, "\n")
+        block.append("\n")
+    lines = [" ".join(ln.split()) for ln in soup.get_text(" ").splitlines()]
+    return "\n".join(ln for ln in lines if ln.strip("• "))
 
 
 def _json_ld(soup):
@@ -111,13 +133,14 @@ def parse_posting(html, url):
             company=org.get("name", "") if isinstance(org, dict) else str(org),
             role=ld.get("title", ""),
             location=", ".join(x for x in [addr.get("addressLocality", ""), addr.get("addressCountry", "")] if x),
-            text=_clean(ld.get("description", "")),
+            text=text_lines(ld.get("description", "")),
             about=_clean(org.get("description", "")) if isinstance(org, dict) else "",
         )
 
     og = soup.find("meta", property="og:title")
     title = (og.get("content") if og else None) or (soup.title.string if soup.title else "") or ""
     for pattern, order in [(r"^(?P<a>.+?) hiring (?P<b>.+?) in (?P<l>.+?) \| LinkedIn", ("company", "role")),
+                           (r"^(?P<a>.+?) at (?P<b>.+?) [–—-] (?P<l>.+?) \| LinkedIn", ("role", "company")),
                            (r"^(?P<a>.+?) - (?P<b>.+?) - (?P<l>.+?) \| Indeed", ("role", "company"))]:
         m = re.match(pattern, title)
         if m:
@@ -134,7 +157,7 @@ def parse_posting(html, url):
         for t in soup(["script", "style", "nav", "header", "footer", "noscript"]):
             t.decompose()
         main = soup.select_one(".description, .show-more-less-html__markup, #jobDescriptionText, main, article") or soup.body or soup
-        out["text"] = " ".join(main.get_text(" ").split())
+        out["text"] = text_lines(main)
     out["text"] = out["text"][:20000]
     out["about"] = summarize(out["about"], n=2, limit=320) if out["about"] else about_section(out["text"], out["company"])
     return out
@@ -200,7 +223,7 @@ def parse_linkedin_guest(html):
         "company": pick(".topcard__org-name-link") or pick(".topcard__flavor"),
         "role": pick(".top-card-layout__title") or pick(".topcard__title"),
         "location": pick(".topcard__flavor--bullet"),
-        "text": pick(".show-more-less-html__markup") or pick(".description__text"),
+        "text": text_lines(soup.select_one(".show-more-less-html__markup") or soup.select_one(".description__text") or ""),
         "about": "",
     }
 
@@ -217,3 +240,28 @@ def read_posting(link, fetch=fetch):
         except Exception:
             pass
     return parse_posting(fetch(link), link)
+
+
+# A job description pasted on its own, without a link
+
+_AT = re.compile(r"^(?P<role>[^.:;|\n]{3,90}?)\s+(?:at|bei|chez|@)\s+(?P<company>[A-Z0-9][^.,;:|()\n]{1,60}?)"
+                 r"(?:\s*[,(|·–-]\s*(?P<location>[^.,;:|()\n]{2,40}))?(?=[.,;:|()\n]|$)")
+
+
+def guess_from_text(text):
+    """Role, company and place from the first lines of a pasted posting.
+    "Data Scientist at Contoso, Luxembourg. You will..." or the LinkedIn copy layout: role, company, place on their own lines."""
+    lines = [ln.strip(" \t•*#-–|") for ln in (text or "").splitlines() if ln.strip(" \t•*#-–|")][:6]
+    if not lines:
+        return {"company": "", "role": "", "location": ""}
+    m = _AT.match(lines[0])
+    if m:
+        return {"role": m["role"].strip(), "company": m["company"].strip(), "location": (m["location"] or "").strip()}
+    short = [ln for ln in lines[:3] if len(ln) <= 70 and not ln.endswith(".")]
+    if len(short) >= 2 and short == lines[:len(short)]:
+        place = short[2].split("·")[0].strip() if len(short) > 2 else ""
+        return {"role": short[0], "company": short[1].split("·")[0].strip(), "location": place}
+    if len(lines[0]) > 80 or lines[0].endswith("."):
+        return {"company": "", "role": "", "location": ""}  # a sentence, not a title: better to ask than to guess wrong
+    shared = parse_shared(lines[0])
+    return {"company": shared["company"][:60], "role": shared["role"][:90], "location": shared["location"][:40]}

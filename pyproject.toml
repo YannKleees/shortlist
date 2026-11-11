@@ -1,6 +1,6 @@
 [project]
 name = "shortlist"
-version = "2.0.0"
+version = "3.0.0"
 description = "Personal job application tracker: save jobs from any link, follow up with companies and people, write letters with a local LLM."
 readme = "README.md"
 license = "MIT"
@@ -16,10 +16,11 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "pypdf>=4.0",
     "python-docx>=1.1",
+    "anthropic>=2.0",
+    "pywebpush>=2.0",
 ]
 
 [project.optional-dependencies]
-claude = ["anthropic>=0.40"]
 dev = ["pytest>=8", "httpx>=0.27"]
 
 [project.scripts]
