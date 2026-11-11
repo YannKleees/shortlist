@@ -198,3 +198,13 @@ def salary_text(text):
             continue  # "€5 voucher" and similar small numbers are not a salary
         return " ".join(m.group(0).split())[:60]
     return ""
+
+
+FULL_TIME = re.compile(r"full[- ]?time|vollzeit|temps plein|plein temps|tempo pieno", re.I)
+PART_TIME = re.compile(r"part[- ]?time|teilzeit|temps partiel|mi-temps", re.I)
+
+
+def hours_text(text):
+    # "Full time" or "Part time" when the posting says one of them, "" when it says neither or offers both.
+    full, part = bool(FULL_TIME.search(text or "")), bool(PART_TIME.search(text or ""))
+    return "" if full == part else "Full time" if full else "Part time"

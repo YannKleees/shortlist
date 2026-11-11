@@ -217,6 +217,12 @@ def test_one_job_on_three_sites_counts_once_and_only_what_was_asked_stays():
     assert list(far) == ["LinkedIn"], "the Luxembourg sites are not asked about Lisbon"
 
 
+def test_hours_are_read_only_when_the_posting_is_clear():
+    from shortlist.extract import hours_text
+    assert hours_text("A full-time position in Luxembourg") == "Full time" and hours_text("Teilzeit, 20 Stunden") == "Part time"
+    assert hours_text("Full time or part time") == "" and hours_text("") == ""
+
+
 def test_find_jobs_look_at_one_save_it_skip_another(tmp_path):
     search_page = card(111, "Data Scientist", "Northwind") + card(222, "Senior Data Analyst", "Contoso") + card(333, "Data Analyst", "Fabrikam")
     job_page = f"""<div class="topcard__org-name-link">Northwind</div><h1 class="top-card-layout__title">Data Scientist</h1>
@@ -245,6 +251,7 @@ def test_find_jobs_look_at_one_save_it_skip_another(tmp_path):
     assert not guess["read"] and guess["score"] is not None
     full = c.post("/api/finds/li-111/read").json()
     assert full["read"] and full["facts"]["years"] == 2 and full["facts"]["degree"]["level"] == "master"
+    assert {"type", "hours", "salary"} <= set(full) and full["type"], "what the filter on Find needs"
     assert full["facts"]["tasks"][0].startswith("Build forecasting models")
     assert {p["key"] for p in full["reasons"]} >= {"field", "level", "experience", "degree"}
 

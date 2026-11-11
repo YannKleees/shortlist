@@ -395,3 +395,15 @@ def test_portfolio_shows_skills_across_cv_github_and_linkedin(tmp_path):
 
     # A helper has no business here.
     assert join(a, c).get("/api/portfolio").status_code == 403
+
+
+def test_on_the_internet_logins_are_counted_per_sender_and_pages_are_locked_down(tmp_path):
+    a = app(tmp_path)
+    signed_in(a)
+    c = TestClient(a, client=("127.0.0.1", 50000))  # as behind Tailscale Funnel: every request comes from this computer
+    bad = lambda ip: c.post("/api/auth/login", json={"name": "Yann", "password": "wrong-wrong"}, headers={"x-forwarded-for": ip}).status_code
+    assert [bad("203.0.113.5") for _ in range(11)] == [401] * 10 + [429]
+    assert bad("198.51.100.7") == 401, "somebody guessing from one address does not lock everybody else out"
+    r = c.get("/api/health")
+    assert r.headers["x-frame-options"] == "SAMEORIGIN" and "noindex" in r.headers["x-robots-tag"]
+    assert "script-src 'self'" in r.headers["content-security-policy"]

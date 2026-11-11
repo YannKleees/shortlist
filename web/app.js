@@ -1,6 +1,6 @@
-// Sift: one page app. Routes live in the hash: #/, #/find, #/calendar, #/mail, #/docs, #/portfolio, #/settings/<part>, #/job/<id>,
+// Sift: one page app. Routes live in the hash: #/, #/find, #/calendar, #/mail, #/me/<part>, #/settings/<part>, #/job/<id>,
 // #/job/<id>/letter, #/join/<token>.
-import { STATUSES, RELATIONS, GROUPS, WORK_SETUPS, sortJobs, isFollowUpDue, todayISO, addDays, searchJobs, nextAction } from "./logic.js";
+import { STATUSES, RELATIONS, GROUPS, WORK_SETUPS, sortJobs, isFollowUpDue, todayISO, addDays, searchJobs, nextAction, payPerYear } from "./logic.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -38,10 +38,9 @@ const ICONS = {
   reply: '<path d="M10 8L5 12.5l5 4.5"/><path d="M5.5 12.5H14a5 5 0 0 1 5 5v1"/>',
   calendar: '<rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
   mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M4 7l8 6.5L20 7"/>',
-  docs: '<path d="M7 3.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9.5A1.5 1.5 0 0 1 5.5 19V5A1.5 1.5 0 0 1 7 3.5z"/><path d="M13.5 3.5V8H18M9 12.5h6M9 16h4"/>',
   gear: '<path d="M4 7h9M19 7h1M4 12h3M13 12h7M4 17h10M20 17h0"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="12" r="2.2"/><circle cx="17" cy="17" r="2.2"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5h4"/>',
-  portfolio: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2" fill="currentColor"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2" fill="currentColor"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2"/>',
+  me: '<circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c.9-3.5 3.7-5.4 7-5.4s6.1 1.9 7 5.4"/>',
 };
 const icon = (name, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
@@ -134,7 +133,7 @@ function transition(update) {
 }
 
 // Deeper screens slide in from the right and back out to the right; tabs move sideways in tab bar order.
-const TAB_ORDER = { jobs: 0, find: 1, calendar: 2, mail: 3, inbox: 3, docs: 4, portfolio: 5, you: 6, settings: 6 };
+const TAB_ORDER = { jobs: 0, find: 1, calendar: 2, mail: 3, inbox: 3, me: 4, you: 5, settings: 5 };
 const wide = () => matchMedia("(min-width: 860px)").matches;
 function setDirection(r) {
   // On a phone a part of Settings is a screen of its own, one step deeper. On a wide screen it sits beside the list.
@@ -158,6 +157,8 @@ async function route() {
   if (r.name === "join") return renderJoin(r.id, r.sub === "auto");
   if (!state.user) return state.needsSetup ? renderSetup() : renderLogin();
   if (r.name === "add") { history.replaceState(null, "", "#/"); renderJobs(); return openAdd(); }
+  // Documents and Portfolio were two screens once; old links land on the one they became.
+  if (r.name === "docs" || r.name === "portfolio") { history.replaceState(null, "", r.name === "docs" ? "#/me/cv" : "#/me"); return route(); }
   closeSheet();
   setDirection(r);
   if (r.name === "job" && r.sub === "letter" && isOwner()) return renderLetter(r.id);
@@ -166,13 +167,18 @@ async function route() {
   if (r.name === "find" && isOwner()) return transition(() => { renderFind(); });
   if (r.name === "calendar") return transition(() => { renderCalendar(); });
   if ((r.name === "mail" || r.name === "inbox") && isOwner()) return transition(() => { renderInbox(); });
-  if (r.name === "docs" && isOwner()) return transition(() => { renderDocs(); });
-  if (r.name === "portfolio" && isOwner()) return transition(() => { renderPortfolio(); });
+  if (r.name === "me" && isOwner()) return transition(() => { renderMe(); });
   if (r.name === "you" || r.name === "settings") return transition(() => { renderYou(r.id || "", state.screen !== "you"); });
   return transition(renderJobs);
 }
 addEventListener("hashchange", route);
 const go = hash => { if (location.hash !== hash) location.hash = hash; else route(); };
+
+const SIEVE = `<svg class="sieve" viewBox="0 0 120 104" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M30 22.5 78 43M44 17.5 96 37M24 36l40-19M42 44.5 86 20.5M62 46l36-18" stroke-width="1" opacity=".4"/>
+  <ellipse cx="60" cy="30" rx="44" ry="16"/><path d="M16 30v14c0 8.8 19.7 16 44 16s44-7.2 44-16V30"/>
+  <rect class="sieve-kept" x="53" y="21" width="13" height="9" rx="1.5"/>
+  <g class="sieve-fall"><circle cx="46" cy="76" r="2"/><circle cx="62" cy="80" r="2"/><circle cx="77" cy="75" r="2"/></g></svg>`;
 
 // The frame around every screen
 
@@ -189,9 +195,9 @@ function shell() {
     <header class="topbar"><div class="wrap">
       <a class="brand" href="#/" aria-label="Sift, your jobs">${BRAND_MARK}<span>Sift</span></a>
       <span class="notch-live" role="status" ${state.live ? "" : "hidden"}>${esc(state.live || "")}</span>
-      <nav class="nav-desktop" aria-label="Main"><span class="nav-pill" aria-hidden="true"></span>${nav("jobs", "#/", "Jobs")}${owner ? nav("find", "#/find", "Find") : ""}${nav("calendar", "#/calendar", "Calendar")}${owner ? nav("inbox", "#/mail", "Mail") + nav("docs", "#/docs", "Documents") + nav("portfolio", "#/portfolio", "Portfolio") : ""}</nav>
-      ${owner ? ic("docs", "#/docs", "Documents", "mob-only") + ic("portfolio", "#/portfolio", "Portfolio", "mob-only") : ""}
-      ${ic("you", "#/settings", "Settings")}
+      <nav class="nav-desktop" aria-label="Main"><span class="nav-pill" aria-hidden="true"></span>${nav("jobs", "#/", "Jobs")}${owner ? nav("find", "#/find", "Find") : ""}${nav("calendar", "#/calendar", "Calendar")}${owner ? nav("inbox", "#/mail", "Mail") + nav("me", "#/me", "Profile") : ""}</nav>
+      ${owner ? ic("me", "#/me", "Profile", "mob-only") : ""}
+      ${owner ? "" : ic("you", "#/settings", "Settings")}
       <button class="notch-add desk-only" type="button" data-add aria-label="Add a job">${icon("plus")}<span>Add job</span></button>
     </div></header>
     <main class="wrap screen"></main>
@@ -220,7 +226,9 @@ function frame(active, body) {
   main.className = "wrap screen";
   main.innerHTML = body;
   $("main.screen", root).replaceWith(main);
-  $$("[data-nav]", root).forEach(a => a.dataset.nav === active ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
+  // For the owner Settings is reached from Profile, so Profile stays marked while they are in it.
+  const on = active === "you" && isOwner() ? "me" : active;
+  $$("[data-nav]", root).forEach(a => a.dataset.nav === on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
   placePill();
   const dir = document.documentElement.dataset.nav;
   if (!document.startViewTransition && !reduced() && dir && dir !== "fade" && state.painted) main.dataset.enter = dir;
@@ -505,7 +513,7 @@ function renderList() {
 }
 
 function emptyState() {
-  if (!state.jobs.length) return `<div class="empty">
+  if (!state.jobs.length) return `<div class="empty">${SIEVE}
     <p class="title-md">${isOwner() ? "No jobs yet" : `Nothing sent to ${esc(ownerName())} yet`}</p>
     <p class="muted">${isOwner() ? "Let Sift look for jobs that fit you, or paste a link from LinkedIn, Indeed or any company site."
       : "Copy a link from LinkedIn, Indeed or any company site and paste it here."}</p>
@@ -514,7 +522,7 @@ function emptyState() {
   const msg = { active: "Nothing left to apply to. Look under Find, or add a job yourself.",
     progress: "No applications yet. When you apply, the job moves here and Sift reminds you to follow up.",
     done: "Jobs you closed, got or turned down end up here." }[state.group];
-  return `<div class="empty"><p class="muted">${msg}</p></div>`;
+  return `<div class="empty">${SIEVE}<p class="muted">${msg}</p></div>`;
 }
 
 function setupSearch() {
@@ -596,10 +604,10 @@ const MAIL_FILTERS = [["all", "All", () => true], ["reply", "Replies", m => m.ki
 async function renderInbox() {
   const ready = state.status?.mail?.ready;
   frame("inbox", `<div class="screen-head" style="display:flex;align-items:end;justify-content:space-between;gap:12px">
-      <div><h1 class="title-xl">Mail</h1><p class="muted">Everything about your applications, read from your Gmail.</p></div>
+      <div><h1 class="title-xl">Mail</h1></div>
       ${ready ? `<button class="btn btn-secondary btn-sm" type="button" data-check-mail>Check now</button>` : ""}</div>
     ${ready ? "" : `<div class="sec stack" style="margin-bottom:14px"><p class="title-md">Connect your Gmail</p>
-      <p class="small muted">Then every reply, interview invitation and rejection lands here, on the job and in the calendar, and your phone gets a notification. Sift only reads your mail.</p>
+      <p class="small muted">Then replies, invitations and rejections land here. Sift only reads your mail.</p>
       <a class="btn btn-primary" href="#/settings/mail" style="justify-self:start">Connect Gmail</a></div>`}
     <div class="chips" id="mail-filters" role="tablist" aria-label="Kind of mail"></div>
     <div id="inbox" class="mail-list">${'<div class="skeleton"></div>'.repeat(3)}</div>`);
@@ -619,7 +627,7 @@ async function renderInbox() {
         <span class="mail-subject">${esc(m.subject || "(no subject)")}</span>
         ${m.body ? `<span class="small muted clamp2">${esc(m.body)}</span>` : ""}
       </span></a>`).join("")
-      : `<div class="empty"><p class="title-md">${all.length ? "Nothing of this kind" : "No mail yet"}</p><p class="muted">${all.length ? "Pick another kind above." : "When you apply by mail or a company answers, it shows up here."}</p></div>`;
+      : `<div class="empty">${SIEVE}<p class="title-md">${all.length ? "Nothing of this kind" : "No mail yet"}</p><p class="muted">${all.length ? "Pick another kind above." : "When you apply by mail or a company answers, it shows up here."}</p></div>`;
     $$("[data-job]", box).forEach(a => a.addEventListener("click", () => { state.openMail = true; }));
   };
   box.classList.add("stagger");
@@ -710,7 +718,7 @@ function paintCalendar(dir = 0) {
     const past = inMonth.filter(e => !ahead.includes(e)).reverse();
     agenda.innerHTML = (ahead.length ? `<h2 class="label ag-title">Coming up</h2>${group(ahead)}` : "")
       + (past.length ? `<h2 class="label ag-title">${ahead.length ? "Earlier this month" : esc(monthName(cal.month))}</h2>${group(past)}` : "")
-      || `<div class="empty"><p class="title-md">Nothing in ${esc(monthName(cal.month))}</p>
+      || `<div class="empty">${SIEVE}<p class="title-md">Nothing in ${esc(monthName(cal.month))}</p>
           <p class="muted">${isOwner() ? "When you apply, a company answers or you plan an interview, it shows up here on its day." : "Applications, answers and interviews show up here on their day."}</p></div>`;
   }
 }
@@ -747,29 +755,6 @@ function openPlan(jobId = "") {
   });
 }
 
-// Documents: your CV, your projects and every letter, in one place.
-async function renderDocs() {
-  if (state.screen !== "docs") frame("docs", `<header class="screen-head"><h1 class="title-xl">Documents</h1></header>${'<div class="skeleton" style="height:60px;margin-top:10px"></div>'.repeat(3)}`);
-  let letters = [];
-  try { await loadStatus(); letters = await api("/api/letters"); } catch (ex) { toast(ex.message); }
-  if (parseRoute().name !== "docs") return;
-  const st = state.status || {};
-  const open = state.jobs.filter(j => !["Rejected", "Withdrawn"].includes(j.status));
-  frame("docs", `<header class="screen-head"><h1 class="title-xl">Documents</h1><p class="muted">Your CV and your letters. What your CV, GitHub and LinkedIn show together is under <a class="link" href="#/portfolio">Portfolio</a>.</p></header>
-    ${fold("f-cv", "CV", st.cv ? (st.review ? `${st.review.score} / 100` : esc(st.cv.filename)) : "Not uploaded", cvBody(st), true)}
-    <section class="sec" style="margin-top:28px"><h2 class="label">Motivation letters</h2>
-      ${letters.length ? `<div class="list">${letters.map(l => `<a class="doc-row" href="#/job/${encodeURIComponent(l.jobId)}/letter">
-          <span class="who"><span class="company">${esc(l.role || "Letter")}</span><span class="role">${esc(l.company || "Company unknown")}</span>
-            <span class="small muted clamp2">${esc(l.start)}</span></span>
-          <span class="meta num">${esc(l.language)} · ${l.words} words · ${fmt(l.updatedAt)}</span></a>`).join("")}</div>`
-        : `<p class="muted" style="margin-bottom:14px">No letters yet. A letter is written from your CV and the posting, and you can change every word.</p>`}
-      ${open.length ? `<form class="doc-new" id="letter-new"><select class="field" name="job" aria-label="Job">${open.map(j => `<option value="${esc(j.id)}">${esc(j.company || "Company unknown")}${j.role ? ` · ${esc(j.role)}` : ""}</option>`).join("")}</select>
-        <button class="btn btn-secondary" type="submit">${icon("letter")}Write a letter</button></form>` : ""}
-    </section>`);
-  $("#letter-new")?.addEventListener("submit", e => { e.preventDefault(); go(`#/job/${encodeURIComponent(e.target.job.value)}/letter`); });
-  bindYou();
-}
-
 async function loadJobs() {
   state.jobs = await api("/api/jobs");
   state.loaded = true;
@@ -800,7 +785,7 @@ async function renderFind() {
 const findMeta = f => {
   const x = f.facts || {};
   return [place(f), ago(f.posted), f.read && x.years ? `asks ${x.years} ${x.years === 1 ? "year" : "years"}` : "",
-    f.read && f.workSetup && f.workSetup !== "Unknown" ? f.workSetup : "", f.source ? `on ${f.source}` : ""].filter(Boolean).map(esc).join(" · ");
+    f.read && f.workSetup && f.workSetup !== "Unknown" ? f.workSetup : "", f.hours, f.salary, f.source ? `on ${f.source}` : ""].filter(Boolean).map(esc).join(" · ");
 };
 
 function findRow(f, i = 0) {
@@ -826,23 +811,134 @@ function findBody(f) {
       <a class="btn btn-quiet" href="${esc(f.link)}" target="_blank" rel="noopener">${icon("open")}Posting</a></div>`;
 }
 
+// The filter on Find: beside the list on a computer, a sheet on a phone. Sliders for how new, how well paid and how
+// near; choices for the rest, each with how many jobs it would leave. The list follows at once. What a posting does not
+// say stays unknown, and unknown never matches.
+const FIND_GROUPS = [["setup", "Work setup", ["Hybrid", "Remote", "On site"]], ["type", "Kind", ["Job", "Internship", "Working student", "Programme"]],
+  ["hours", "Hours", ["Full time", "Part time"]]];
+const FIND_SLIDERS = {
+  age: ["Posted", [0, 30, 14, 7, 3, 1], v => !v ? "Any time" : v === 1 ? "Today" : `Last ${v} days`],
+  pay: ["Pay per year", [0, 1, 20000, 30000, 40000, 50000, 60000, 80000], v => !v ? "Any" : v === 1 ? "Stated" : `From €${v / 1000}k`],
+  km: ["From home", [0, 100, 50, 25, 10], v => !v ? "Any distance" : `Within ${v} km`],
+};
+const NO_FILTER = () => ({ age: 0, pay: 0, km: 0, setup: [], type: [], hours: [], site: [] });
+function findFilter() {
+  if (!state.findFilter) {
+    let saved = {};
+    try { saved = JSON.parse(store.get("find-filter") || "{}"); } catch { /* start empty */ }
+    state.findFilter = { ...NO_FILTER(), ...Object.fromEntries(Object.entries(saved).filter(([k]) => k in NO_FILTER())) };
+    for (const k of ["age", "pay", "km"]) state.findFilter[k] = +state.findFilter[k] || 0;
+  }
+  return state.findFilter;
+}
+const daysOld = f => f.posted ? Math.floor((Date.now() - new Date(f.posted.slice(0, 10) + "T12:00:00")) / 864e5) : null;
+const findValue = { setup: f => f.workSetup === "Unknown" ? "" : f.workSetup, type: f => f.type, hours: f => f.hours, site: f => f.source };
+function findMatch(f, x, skip = "") {
+  const d = daysOld(f);
+  if (x.age && (d === null || d >= x.age)) return false;
+  if (x.pay && !(f.salary && (x.pay === 1 || payPerYear(f.salary) >= x.pay))) return false;
+  if (x.km && f.workSetup !== "Remote" && !(f.distanceKm != null && f.distanceKm <= x.km)) return false;
+  for (const k of ["setup", "type", "hours", "site"]) if (skip !== k && x[k].length && !x[k].includes(findValue[k](f))) return false;
+  return true;
+}
+const findShown = () => state.finds.items.filter(f => findMatch(f, findFilter()));
+const findActive = () => { const x = findFilter(); return ["age", "pay", "km"].filter(k => x[k]).length + x.setup.length + x.type.length + x.hours.length + x.site.length; };
+
+function findFilterHtml(inSheet = false) {
+  const x = findFilter(), all = state.finds.items;
+  const chip = (k, v) => {
+    const on = x[k].includes(v), n = all.filter(f => findMatch(f, x, k) && findValue[k](f) === v).length;
+    return `<button class="fchip" type="button" data-f="${k}" data-v="${esc(v)}" aria-pressed="${on}" ${n || on ? "" : "disabled"}>${esc(v)}<span class="num">${n}</span></button>`;
+  };
+  const group = (title, values, k) => `<fieldset class="fgroup"><legend>${title}</legend><div class="fchips">${values.map(v => chip(k, v)).join("")}</div></fieldset>`;
+  const slider = k => {
+    const [title, steps, say] = FIND_SLIDERS[k], i = Math.max(0, steps.indexOf(x[k]));
+    return `<label class="fgroup fslider"><span class="fslider-head"><span>${title}</span><output>${say(steps[i])}</output></span>
+      <input type="range" min="0" max="${steps.length - 1}" step="1" value="${i}" data-fs="${k}" style="--at:${i / (steps.length - 1)}" aria-valuetext="${say(steps[i])}"></label>`;
+  };
+  const sites = [...new Set(all.map(f => f.source).filter(Boolean))].sort();
+  const unread = all.filter(f => !f.read).length;
+  return `<div class="ffilter-head"><h2 class="${inSheet ? "title-md" : "label"}">Filter</h2>${findActive() ? `<button class="btn btn-sm btn-quiet" type="button" data-f-clear>Clear</button>` : ""}</div>
+    ${slider("age")}${slider("pay")}${state.finds.items.some(f => f.distanceKm != null) ? slider("km") : ""}
+    ${FIND_GROUPS.map(([k, title, values]) => group(title, values, k)).join("")}
+    ${sites.length > 1 ? group("Site", sites, "site") : ""}
+    ${unread ? `<p class="small muted fnote">${plural(unread, "job")} not read yet: setup, hours and pay unknown. <button type="button" data-f-read>Read them</button></p>` : ""}
+    ${inSheet ? `<div class="row-actions" style="margin-top:18px"><button class="btn btn-primary" type="button" data-close data-f-show>Show ${plural(findShown().length, "job")}</button></div>` : ""}`;
+}
+
+function paintPanels(focus = "") {
+  $$("[data-ffilter]").forEach(p => {
+    const had = p.contains(document.activeElement);
+    p.innerHTML = findFilterHtml(p.dataset.ffilter === "sheet");
+    if (had && focus) $(focus, p)?.focus();
+  });
+  paintFilterCount();
+}
+function paintFilterCount() {
+  const note = $("#find-note"), n = $("[data-filter-open] .num"), show = $("[data-f-show]");
+  if (note && !$("[data-search]")?.disabled) note.textContent = findNote();
+  if (n) { n.textContent = findActive(); n.hidden = !findActive(); }
+  if (show) show.textContent = `Show ${plural(findShown().length, "job")}`;
+}
+function filterChanged() {
+  store.set("find-filter", JSON.stringify(findFilter()));
+  const list = $("#finds");
+  if (list) { list.classList.add("quick"); list.innerHTML = findList(); }
+}
+
+function onFilterClick(e) {
+  const b = e.target.closest("button"), x = findFilter();
+  if (!b) return;
+  if (b.matches("[data-f-read]")) { b.disabled = true; b.textContent = "Reading"; readAhead(999); return; }
+  if (b.matches("[data-f-clear]")) Object.assign(x, NO_FILTER());
+  else if (b.dataset.f) x[b.dataset.f] = x[b.dataset.f].includes(b.dataset.v) ? x[b.dataset.f].filter(v => v !== b.dataset.v) : [...x[b.dataset.f], b.dataset.v];
+  else return;
+  filterChanged();
+  paintPanels(b.dataset.f ? `[data-f="${b.dataset.f}"][data-v="${CSS.escape(b.dataset.v)}"]` : "[data-fs]");
+}
+// A slider answers while it moves: its own words and the list follow each step, and the counts on the other choices
+// catch up when it is let go, so the thumb is never taken from under the finger.
+function onFilterSlide(e) {
+  const r = e.target.closest("[data-fs]");
+  if (!r) return;
+  const k = r.dataset.fs, [, steps, say] = FIND_SLIDERS[k];
+  if (e.type === "change") return paintPanels(`[data-fs="${k}"]`);
+  findFilter()[k] = steps[+r.value];
+  r.style.setProperty("--at", +r.value / (steps.length - 1));
+  r.setAttribute("aria-valuetext", say(steps[+r.value]));
+  $("output", r.closest(".fslider")).textContent = say(steps[+r.value]);
+  filterChanged();
+  paintFilterCount();
+}
+const bindFilter = el => { el.addEventListener("click", onFilterClick); el.addEventListener("input", onFilterSlide); el.addEventListener("change", onFilterSlide); };
+
+function openFilter() {
+  openSheet(`<div data-ffilter="sheet">${findFilterHtml(true)}</div>`, s => bindFilter($("[data-ffilter]", s)));
+}
+
 function paintFind() {
   const d = state.finds;
   const want = d.ready ? `${d.roles.join(", ")}${d.where.length ? ` in ${d.where.join(", ")}` : ""}` : "";
   frame("find", `
     <header class="screen-head"><h1 class="title-xl">Find</h1>
       <p class="muted">${d.ready ? `${esc(want)}. <a class="link" href="#/settings/profile">Change</a>` : "Say which jobs you want, and Sift looks for them and tells you how each one fits."}</p></header>
-    ${d.ready ? `<div class="find-bar"><span class="small muted" id="find-note">${findNote()}</span>
-        <button class="btn btn-secondary btn-sm" type="button" data-search>Search again</button></div>
-      <div id="finds" class="list">${findList()}</div>${findSources()}`
+    ${d.ready ? `<div class="find-layout"><div class="find-main">
+        <div class="find-bar"><span class="small muted" id="find-note">${findNote()}</span>
+          <span class="find-tools"><button class="btn btn-secondary btn-sm filter-open" type="button" data-filter-open>Filter<span class="num" ${findActive() ? "" : "hidden"}>${findActive()}</span></button>
+            <button class="btn btn-secondary btn-sm" type="button" data-search>Search again</button></span></div>
+        <div id="finds" class="list">${findList()}</div>${findSources()}</div>
+        <aside class="ffilter" data-ffilter="side" aria-label="Filter">${findFilterHtml()}</aside></div>`
     : `<a class="btn btn-primary" href="#/settings/profile">Say what you are looking for</a>`}`);
   $("[data-search]")?.addEventListener("click", searchFinds);
   $("#finds")?.addEventListener("click", onFindClick);
+  $("#finds")?.addEventListener("click", onFilterClick);
+  if ($(".ffilter")) bindFilter($(".ffilter"));
+  $("[data-filter-open]")?.addEventListener("click", openFilter);
 }
 
 const findNote = () => {
-  const d = state.finds, n = d.items.length;
-  return n ? `${plural(n, "job")} to look at, best fit first${d.at ? ` · searched ${ago(d.at)}` : ""}` : d.at ? `Searched ${ago(d.at)}` : "";
+  const d = state.finds, n = d.items.length, shown = findShown().length;
+  return n ? `${shown < n ? `${shown} of ${plural(n, "job")}` : plural(n, "job")}, best fit first${d.at ? ` · searched ${ago(d.at)}` : ""}` : d.at ? `Searched ${ago(d.at)}` : "";
 };
 // Where the last search looked: every site with how many jobs it gave, and the ones that did not answer.
 const findSources = () => {
@@ -854,14 +950,15 @@ const findSources = () => {
 };
 const isWeak = f => f.fit === "Stretch";
 const findList = () => {
-  const items = [...state.finds.items].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  const items = findShown().sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   const fits = items.filter(f => !isWeak(f)), weak = items.filter(isWeak);
-  if (!items.length) return findEmpty();
+  if (!state.finds.items.length) return findEmpty();
+  if (!items.length) return `<div class="empty">${SIEVE}<p class="muted">No job matches the filter.</p><button class="btn btn-secondary btn-sm" type="button" data-f-clear>Clear the filter</button></div>`;
   return `${fits.map(findRow).join("") || `<p class="muted" style="padding:18px 0">Nothing that fits well right now.</p>`}
     ${weak.length ? `<details class="weaker" ${fits.length ? "" : "open"}><summary><span><b data-weak-n>${weak.length}</b> more that fit less</span>
         <button class="btn btn-sm btn-quiet" type="button" data-skip-weak>Skip all</button>${icon("chev")}</summary>${weak.map(findRow).join("")}</details>` : ""}`;
 };
-const findEmpty = () => `<div class="empty"><p class="muted">${state.finds.at ? "Nothing new. You have seen everything that was found." : "Looking for jobs."}</p></div>`;
+const findEmpty = () => `<div class="empty">${SIEVE}<p class="muted">${state.finds.at ? "Nothing new. You have seen everything that was found." : "Looking for jobs."}</p></div>`;
 
 async function searchFinds() {
   const b = $("[data-search]"), note = $("#find-note");
@@ -909,6 +1006,7 @@ async function readAhead(n = 6) {
   }
   // The real scores are in: put the best fit first again, unless you are reading one right now.
   const list = $("#finds");
+  if (state.findRun === run) paintPanels();
   if (state.findRun !== run || !list || $('.find-head[aria-expanded="true"]', list)) return;
   list.innerHTML = findList();
 }
@@ -920,6 +1018,7 @@ async function onFindClick(e) {
     state.finds.items = state.finds.items.filter(x => x.id !== id);
     if (state.status?.finds) state.status.finds.new = state.finds.items.length;
     paintFindCount();
+    paintPanels();
     const weak = row.closest(".weaker");
     row.remove();
     if (weak) { const n = $$(".find", weak).length; if (n) $("[data-weak-n]", weak).textContent = n; else weak.remove(); }
@@ -985,7 +1084,7 @@ function openAdd(prefill = "") {
   const canPaste = !!navigator.clipboard?.readText;
   openSheet(`
     <h2 id="sheet-title" class="title-lg">Add a job</h2>
-    <p class="muted" style="margin-top:-8px">Paste a link from LinkedIn, Indeed or any website. A list of links, or the whole job text, works too.</p>
+    <p class="muted" style="margin-top:-8px">A link, a list of links, or the whole job text.</p>
     <form class="form" id="add-form">
       <textarea class="field" name="text" rows="3" placeholder="https://" aria-label="Link or job text" autocapitalize="off" autocorrect="off" spellcheck="false">${esc(prefill)}</textarea>
       ${owner ? "" : `<details><summary class="small muted" style="cursor:pointer;min-height:32px;display:flex;align-items:center">Add a message for ${esc(ownerName())}</summary>
@@ -1085,7 +1184,8 @@ function renderJob() {
           <div class="fold-body stack"><div id="status-row"></div><div id="dates"></div><div><p class="label" style="margin-bottom:8px">Timeline</p><div id="timeline"></div></div></div></details>
         <details class="fold" id="fold-people" hidden><summary><span class="s-title">People</span><span class="s-note" data-note="people"></span>${icon("chev")}</summary><div class="fold-body" id="people"></div></details>`
       : `<details class="fold" id="fold-timeline" open><summary><span class="s-title">Notes and updates</span><span class="s-note num" data-note="timeline"></span>${icon("chev")}</summary><div class="fold-body" id="timeline"></div></details>`}
-    </div>`);
+    </div>
+    ${owner ? `<p class="job-end"><span class="muted">Not applying any more?</span><button class="btn btn-sm btn-danger" type="button" data-delete-job>${icon("trash")}Delete job</button></p>` : ""}`);
   $(".fit .score")?.style.setProperty("view-transition-name", "job-score");
   $$(".stack.rise > *").forEach((el, i) => el.style.setProperty("--i", i));
   $("[data-more]")?.addEventListener("click", e => openMenu(e.currentTarget, [
@@ -1094,6 +1194,7 @@ function renderJob() {
     { label: "Edit details", icon: "edit", run: () => editJob() },
     { label: "Delete job", icon: "trash", danger: true, run: () => deleteJob() },
   ]));
+  $("[data-delete-job]")?.addEventListener("click", () => deleteJob());
   bindJob();
   refreshJobParts();
   state.openMail = false;
@@ -1492,7 +1593,7 @@ async function renderLetter(id) {
           <label class="field-label">Anything to stress?<input class="field" id="l-notes" placeholder="For example: my NLP thesis"></label>
         </div>
         <button class="btn btn-primary btn-lg" type="button" id="l-write">${current ? "Write a new draft" : "Write the letter"}</button>
-        ${!state.status?.cv ? `<p class="hint">Upload your CV under <a href="#/docs" class="link">Documents</a> first.</p>` : ""}
+        ${!state.status?.cv ? `<p class="hint">Upload your CV under <a href="#/me/cv" class="link">Profile</a> first.</p>` : ""}
         ${job.hasText === false ? `<p class="hint">The job text is missing, so the letter can only use the title. Paste the text on the job page first.</p>` : ""}
       ${current ? "</div></details>" : "</div>"}
       <div id="l-editor"></div>
@@ -1587,7 +1688,7 @@ async function renderYou(open = "", reload = true) {
   }
   const parts = settingsParts(state.you.me, state.you.people, state.status || {});
   const cur = parts.find(x => x[0] === open) || parts[0];
-  frame("you", `<div class="screen-head"><h1 class="title-xl">Settings</h1>
+  frame("you", `<div class="screen-head">${isOwner() ? `<a class="back" href="#/me">${icon("back")}Profile</a>` : ""}<h1 class="title-xl">Settings</h1>
     <p class="muted">${owner ? `Signed in as ${esc(state.user.name)}.` : `You help ${esc(ownerName())} find a job. Thank you.`}</p></div>
     ${installHint()}
     <div class="set" ${open === cur[0] ? "data-open" : ""}>
@@ -1602,7 +1703,10 @@ async function renderYou(open = "", reload = true) {
   bindYou();
 }
 
-// Portfolio: every skill, and where it shows.
+// Profile: everything about you, one part per screenful: an overview with what to do next, then CV, skills, GitHub,
+// LinkedIn and letters. Scrolling settles on a part, and the rail on the right says where you are and where you can go.
+
+const ME_PARTS = { cv: "CV", skills: "Skills", github: "GitHub", linkedin: "LinkedIn", letters: "Letters" };
 
 function skillNote(r, p) {
   const n = r.repos.length;
@@ -1612,16 +1716,37 @@ function skillNote(r, p) {
     r.asked ? `Asked for in ${r.asked} of ${plural(p.postings, "job")} you saved or found.` : ""].filter(Boolean).join(" ");
 }
 
-async function renderPortfolio(fresh = null) {
-  const head = (text, more = "") => `<header class="screen-head"><h1 class="title-xl">Portfolio</h1>${text ? `<p class="muted">${text}</p>` : ""}${more}</header>`;
-  if (state.screen !== "portfolio") frame("portfolio", `${head("")}${'<div class="skeleton" style="height:44px;margin-top:6px"></div>'.repeat(8)}`);
-  let p = fresh;
+// The few things worth doing first, one from each part in turn, so no part crowds out the others.
+function nextSteps(st, p, gaps, limit = 4) {
+  const lr = p.linkedin.review;
+  const from = {
+    cv: !st.cv ? [["Upload your CV", "Jobs are scored and letters written from it."]]
+      : (st.review?.fixes || []).map(f => [f.issue, f.fix]),
+    skills: gaps.slice(0, 3).map(r => [`Show ${r.name}`,
+      `Asked by ${plural(r.asked, "job")}, on neither your CV nor GitHub.`]),
+    github: !p.github.user ? [["Add your GitHub", "Your projects count as proof of skills."]]
+      : p.github.repos.filter(r => r.checked && r.missing.length).sort((a, b) => a.done - b.done).map(r => [r.name, `Add ${r.missing.join(", ")}.`]),
+    linkedin: !lr ? [["Add your LinkedIn profile", "It is compared with your CV and GitHub."]]
+      : lr.checks.filter(c => !c.ok).map(c => [`LinkedIn: ${c.label.toLowerCase()}`, c.tip]),
+  };
+  const out = [];
+  for (let i = 0; out.length < limit && Object.values(from).some(list => list[i]); i++)
+    for (const [part, list] of Object.entries(from)) if (list[i] && out.length < limit) out.push({ part, title: list[i][0], text: list[i][1] });
+  return out;
+}
+
+async function renderMe(fresh = null) {
+  const head = (text, more = "") => `<header class="screen-head"><div class="head-row"><h1 class="title-xl">Profile</h1><a class="btn btn-sm btn-quiet" href="#/settings">${icon("gear")}Settings</a></div>${text ? `<p class="muted">${text}</p>` : ""}${more}</header>`;
+  const first = state.screen !== "me" && !reduced(), wasMe = state.screen === "me";
+  if (state.screen !== "me") frame("me", `${head("")}${'<div class="skeleton" style="height:58px;margin-top:6px"></div>'.repeat(6)}`);
+  let p = fresh, letters = [];
   try {
-    p ||= await api("/api/portfolio");
+    [p, letters] = await Promise.all([p || api("/api/portfolio"), api("/api/letters"), loadStatus()]);
     // GitHub is read again by itself when what the app knows is more than a day old.
     if (!fresh && p.github.user && Date.now() - new Date(p.github.at) > 864e5) p = await api("/api/portfolio/refresh", { method: "POST" }).catch(() => p);
   } catch (ex) { toast(ex.message); return; }
-  if (parseRoute().name !== "portfolio") return;
+  if (parseRoute().name !== "me") return;
+  const st = state.status || {}, want = parseRoute().id;
   const li = p.linkedin.has, lr = p.linkedin.review;
   const has = r => Boolean(r.cv || r.repos.length);
   const mine = p.skills.filter(has), wanted = p.skills.filter(r => r.asked);
@@ -1637,45 +1762,95 @@ async function renderPortfolio(fresh = null) {
   const groups = p.groups.map(g => [g, p.skills.filter(r => r.group === g).sort((x, y) => has(y) - has(x) || y.asked - x.asked)]).filter(([, rows]) => rows.length);
   const repos = [...p.github.repos].sort((a, b) => a.done - b.done);
   const complete = repos.filter(r => r.checked && !r.missing.length).length;
-  const open = lr ? lr.checks.filter(c => !c.ok) : [];
-  frame("portfolio", `${head(p.hasCv || repos.length
-      ? `${plural(mine.length, "skill")} you can show${p.fields.length ? `, strongest in ${esc(p.fields.map(f => /^[A-Z][a-z]/.test(f) ? f[0].toLowerCase() + f.slice(1) : f).join(", ").replace(/, ([^,]*)$/, " and $1"))}` : ""}.
-        ${p.postings ? `The ${plural(p.postings, "job")} you saved or found ask for ${plural(wanted.length, "skill")}; ${gaps.length ? `${gaps.length} of them you do not show yet` : "you show all of them"}.` : ""}`
-      : `Upload your CV under <a class="link" href="#/docs">Documents</a> and add GitHub below. Then every skill shows up here.`,
-      `<div class="row-actions pf-again"><button class="btn btn-secondary" type="button" data-portfolio-refresh>Check everything again</button>
-        <span class="small muted">${p.github.at ? `GitHub read ${fmt(p.github.at)}` : "GitHub not added"}${p.linkedin.at ? ` · LinkedIn from ${fmt(p.linkedin.at)}` : ""}</span></div>`)}
-    <section class="sec"><div class="sec-head"><h2 class="label">Skills</h2><span class="small muted">Tap a skill to see where it shows.</span></div>
-      ${gaps.length ? `<p class="sk-gaps">Asked for, not shown yet: ${gaps.slice(0, 8).map(r => `<b>${esc(r.name)}</b> <span class="num">${r.asked}</span>`).join(", ")}.</p>` : ""}
+  const todo = lr ? lr.checks.filter(c => !c.ok) : [];
+  const jobs = state.jobs.filter(j => !["Rejected", "Withdrawn"].includes(j.status));
+  const steps = nextSteps(st, p, gaps);
+
+  const skills = p.skills.length ? `${gaps.length ? `<p class="sk-gaps">Asked for, not shown yet: ${gaps.slice(0, 8).map(r => `<b>${esc(r.name)}</b> <span class="num">${r.asked}</span>`).join(", ")}.</p>` : ""}
       <div class="sk ${li ? "" : "no-li"}">
         <div class="sk-head" aria-hidden="true"><span></span><span>CV</span><span>GitHub</span>${li ? "<span>LinkedIn</span>" : ""}<span>Asked</span></div>
         ${groups.map(([g, rows]) => `<h3 class="sk-group">${esc(g)}</h3>${rows.map(row).join("")}`).join("")}
-      </div>
-    </section>
-    <section class="sec"><div class="sec-head"><h2 class="label">GitHub</h2>
-        <span class="small muted tnum">${p.github.user ? `${esc(p.github.user)} · ${plural(repos.length, "project")} · ${complete} complete` : "Not added"}</span></div>
-      ${repos.length ? `<p class="small muted" style="margin-bottom:6px">What a recruiter finds when they open a project. The ones that need most come first.</p>
-        <div class="list">${repos.map(r => `<a class="repo-row" href="${esc(r.url)}" target="_blank" rel="noopener">
+      </div>` : `<p class="muted">Upload your CV or add GitHub, and every skill they show is listed here.</p>`;
+  const github = `${repos.length ? `<div class="list">${repos.map(r => `<a class="repo-row" href="${esc(r.url)}" target="_blank" rel="noopener">
           <span class="who"><span class="company">${esc(r.name)}</span>
             <span class="small muted">${!r.checked ? "Read again to check it." : r.missing.length ? `Missing: ${esc(r.missing.join(", "))}.` : "Nothing missing."}</span></span>
           <span class="repo-score num ${r.checked && !r.missing.length ? "full" : ""}">${r.checked ? `${r.done}/${r.total}` : "?"}</span></a>`).join("")}</div>` : ""}
-      <details class="weaker" ${p.github.user ? "" : "open"}><summary><span>${p.github.user ? "GitHub account" : "Add your GitHub"}</span>${icon("chev")}</summary>${githubBody(p.github)}</details>
-    </section>
-    <section class="sec"><div class="sec-head"><h2 class="label">LinkedIn</h2>
-        <span class="small muted tnum">${lr ? `${lr.done} of ${lr.total} checks · read ${fmt(p.linkedin.at)}` : "Not added"}</span></div>
-      ${lr ? `${open.length ? `<ul class="fixes">${open.map(c => `<li><b>${esc(c.label)}</b><span class="small">${esc(c.tip)}</span></li>`).join("")}</ul>` : `<p>Nothing to fix.</p>`}
+      <details class="weaker" ${p.github.user ? "" : "open"}><summary><span>${p.github.user ? `GitHub account: ${esc(p.github.user)}` : "Add your GitHub"}</span>${icon("chev")}</summary>${githubBody(p.github)}</details>`;
+  const linkedin = `${lr ? `${todo.length ? `<ul class="fixes">${todo.map(c => `<li><b>${esc(c.label)}</b><span class="small">${esc(c.tip)}</span>${c.copy ? `<button class="btn btn-sm btn-secondary" type="button" data-copy="${esc(c.copy)}">Copy this headline</button>` : ""}</li>`).join("")}</ul>` : `<p>Nothing to fix.</p>`}
         <div class="row-actions pf-again" style="margin-top:14px"><label class="btn btn-secondary" style="cursor:pointer">Upload a new LinkedIn PDF<input type="file" accept=".pdf" class="sr" data-linkedin-file></label>
-          <span class="small muted">On LinkedIn: your profile, More, Save to PDF. LinkedIn does not let an app read it for you.</span></div>
+          <span class="small muted">On LinkedIn: More, Save to PDF.</span></div>
         ${lr.done ? `<p class="small muted" style="margin-top:12px">Fine: ${esc(lr.checks.filter(c => c.ok).map(c => c.label.toLowerCase()).join(", "))}.</p>` : ""}`
-        : `<p class="muted" style="max-width:60ch">Sift cannot open LinkedIn for you. Give it your profile as text and it compares it with your CV and GitHub.</p>`}
+        : `<p class="muted" style="max-width:60ch">Paste your profile or upload its PDF.</p>`}
       <details class="weaker" ${lr ? "" : "open"}><summary><span>${lr ? "Update your profile text" : "Add your profile"}</span>${icon("chev")}</summary>
         <form class="form" id="linkedin-form" style="padding-top:14px">
           <label class="field-label">Link to your profile<input class="field" name="link" value="${esc(p.linkedin.link || "")}" placeholder="linkedin.com/in/yourname" autocapitalize="off" spellcheck="false"></label>
           <label class="field-label">Your profile as text<textarea class="field" name="text" rows="6" placeholder="Open your profile, select everything from your name down to your skills, copy, and paste it here."></textarea>
-            <span class="hint">Or on LinkedIn: More, then Save to PDF, and upload that file. Set LinkedIn to English first, so the headings are read right.</span></label>
+            <span class="hint">Or upload the PDF: More, Save to PDF. Set LinkedIn to English first.</span></label>
           <div class="row-actions"><label class="btn btn-secondary" style="cursor:pointer">Upload the PDF<input type="file" accept=".pdf" class="sr" data-linkedin-file></label>
             <button class="btn btn-primary" type="submit">Check my profile</button></div>
-        </form></details>
-    </section>`);
+        </form></details>`;
+  const letterList = `${letters.length ? `<div class="list">${letters.map(l => `<a class="doc-row" href="#/job/${encodeURIComponent(l.jobId)}/letter">
+          <span class="who"><span class="company">${esc(l.role || "Letter")}</span><span class="role">${esc(l.company || "Company unknown")}</span>
+            <span class="small muted clamp2">${esc(l.start)}</span></span>
+          <span class="meta num">${esc(l.language)} · ${l.words} words · ${fmt(l.updatedAt)}</span></a>`).join("")}</div>`
+        : `<p class="muted">No letters yet.</p>`}
+      ${jobs.length ? `<form class="doc-new" id="letter-new"><select class="field" name="job" aria-label="Job">${jobs.map(j => `<option value="${esc(j.id)}">${esc(j.company || "Company unknown")}${j.role ? ` · ${esc(j.role)}` : ""}</option>`).join("")}</select>
+        <button class="btn btn-secondary" type="submit">${icon("letter")}Write a letter</button></form>` : ""}`;
+  const parts = {
+    cv: [st.cv ? (st.review ? `${st.review.score} / 100` : esc(st.cv.filename)) : "Not uploaded", cvBody(st)],
+    skills: [p.skills.length ? `${mine.length} shown${gaps.length ? ` · ${gaps.length} missing` : ""}` : "None yet", skills],
+    github: [p.github.user ? `${plural(repos.length, "project")} · ${complete} complete` : "Not added", github],
+    linkedin: [lr ? `${lr.done} of ${lr.total} fine` : "Not added", linkedin],
+    letters: [letters.length ? plural(letters.length, "letter") : "None yet", letterList],
+  };
+  const lower = f => /^[A-Z][a-z]/.test(f) ? f[0].toLowerCase() + f.slice(1) : f;
+  const section = (k, note, body) => `<section class="me-sec" id="me-${k}" data-part="${k}" aria-labelledby="me-h-${k}">
+      <header class="me-sec-head"><h2 class="title-lg" id="me-h-${k}">${ME_PARTS[k]}</h2><span class="s-note">${note}</span></header>${body}</section>`;
+  const to = want in ME_PARTS && !fresh ? want : wasMe ? state.mePart : "";  // after a save you stay on the part you were on
+  frame("me", `<section class="me-sec me-top" id="me-top" data-part="top">${head(p.hasCv || repos.length
+      ? `${plural(mine.length, "skill")} shown${p.fields.length ? `, strongest in ${esc(p.fields.map(lower).join(", ").replace(/, ([^,]*)$/, " and $1"))}` : ""}.${gaps.length ? ` ${gaps.length} asked for and missing.` : ""}`
+      : `Start with your CV.`,
+      `<div class="row-actions pf-again"><button class="btn btn-secondary" type="button" data-portfolio-refresh>Check everything again</button>
+        <span class="small muted">${p.github.at ? `GitHub read ${fmt(p.github.at)}` : "GitHub not added"}${p.linkedin.at ? ` · LinkedIn from ${fmt(p.linkedin.at)}` : ""}</span></div>`)}
+      <section class="next" aria-labelledby="next-h"><h2 class="label" id="next-h">Do next</h2>
+        ${steps.length ? `<ul class="next-list ${first ? "stagger" : ""}">${steps.map((s, n) => `<li style="--i:${n}"><button type="button" data-me-jump="${s.part}">
+            <span class="nx"><b>${esc(s.title)}</b><span class="small clamp2">${esc(s.text)}</span></span><span class="nx-part">${ME_PARTS[s.part]}</span></button></li>`).join("")}</ul>`
+          : `<p class="muted">Nothing. Your CV, GitHub and LinkedIn pass every check.</p>`}
+      </section></section>
+    ${Object.entries(parts).map(([k, [note, body]]) => section(k, note, body)).join("")}
+    <nav class="me-rail" aria-label="Parts of your profile"><span class="me-rail-mark" aria-hidden="true"></span>
+      ${[["top", "Overview"], ...Object.entries(ME_PARTS)].map(([k, l]) => `<button type="button" data-me-jump="${k}" aria-label="${l}"><span>${l}</span></button>`).join("")}</nav>`);
+
+  // The rail follows the scroll: the part that crosses the upper half of the screen is the one you are on.
+  const rail = $(".me-rail"), calm = reduced();
+  const here = k => {
+    state.mePart = k;
+    $$("button", rail).forEach(b => b.dataset.meJump === k ? b.setAttribute("aria-current", "true") : b.removeAttribute("aria-current"));
+    const b = $(`[data-me-jump="${k}"]`, rail), m = $(".me-rail-mark", rail);
+    m.style.transform = `translateY(${b.offsetTop}px)`;
+    m.style.height = `${b.offsetHeight}px`;
+  };
+  const io = new IntersectionObserver(seen => { const e = seen.filter(x => x.isIntersecting).pop(); if (e) here(e.target.dataset.part); }, { rootMargin: "-35% 0px -60% 0px" });
+  $$(".me-sec").forEach(sec => io.observe(sec));
+  state.ctl.signal.addEventListener("abort", () => io.disconnect());
+  here("top");
+  // One turn of the wheel at the end of a part goes to the next one, and at its start to the one before. Inside a part
+  // that is longer than the screen the wheel scrolls as usual. Touch needs none of this: the snap does it.
+  let busy = 0;
+  addEventListener("wheel", e => {
+    if (e.ctrlKey || sheet.open) return;
+    if (Date.now() < busy) { e.preventDefault(); return; }
+    if (Math.abs(e.deltaY) < 20) return;
+    const secs = $$(".me-sec"), i = secs.findIndex(x => x.dataset.part === state.mePart), r = secs[i]?.getBoundingClientRect();
+    const next = !r ? null : e.deltaY > 0 && r.bottom <= innerHeight + 4 ? secs[i + 1] : e.deltaY < 0 && r.top >= 0 ? secs[i - 1] : null;
+    if (!next) return;
+    e.preventDefault();
+    busy = Date.now() + 800;
+    next.scrollIntoView({ block: "start", behavior: calm ? "auto" : "smooth" });
+  }, { passive: false, signal: state.ctl.signal });
+  $$("[data-me-jump]").forEach(b => b.addEventListener("click", () => $(`#me-${b.dataset.meJump}`).scrollIntoView({ block: "start", behavior: calm ? "auto" : "smooth" })));
+  $("#letter-new")?.addEventListener("submit", e => { e.preventDefault(); go(`#/job/${encodeURIComponent(e.target.job.value)}/letter`); });
+  if (to && to !== "top") $(`#me-${to}`).scrollIntoView({ block: "start" });
   bindYou();
 }
 
@@ -1684,7 +1859,7 @@ async function saveLinkedin(body, button) {
   try {
     const r = body instanceof FormData ? await api("/api/linkedin/file", { method: "POST", body }) : await api("/api/linkedin", { method: "PUT", json: body });
     toast(r.review ? `Checked: ${r.review.done} of ${r.review.total} fine.` : "Saved");
-    await renderPortfolio();
+    await renderMe();
   } catch (ex) { toast(ex.message, { ms: 6000 }); if (button) { button.disabled = false; button.classList.remove("busy"); } }
 }
 
@@ -1697,7 +1872,7 @@ function cvBody(st) {
     </div>
     ${r.fixes?.length ? `<p class="label" style="margin-bottom:6px">To improve</p><ol class="steps" style="margin-bottom:14px">${r.fixes.map(f => `<li><span><b>${esc(f.issue)}.</b> ${esc(f.fix)}</span></li>`).join("")}</ol>` : ""}
     ${r.missing?.length ? `<p class="label" style="margin-bottom:6px">Often asked, missing</p><div class="chips" style="margin-bottom:14px">${r.missing.map(m => `<span class="tag maybe">${esc(m)}</span>`).join("")}</div>` : ""}` : "";
-  return `${st.cv ? "" : `<p class="small muted" style="margin-bottom:10px">PDF, Word or LaTeX (also a zip from Overleaf). Sift uses it to score jobs and write letters.</p>`}
+  return `${st.cv ? "" : `<p class="small muted" style="margin-bottom:10px">PDF, Word, LaTeX or a zip from Overleaf.</p>`}
     ${reviewHtml}
     <div class="row-actions">
       <label class="btn ${st.cv ? "btn-secondary" : "btn-primary"}" style="cursor:pointer">${st.cv ? "Upload a new CV" : "Upload CV"}<input type="file" accept=".pdf,.docx,.tex,.zip,.txt,.md" class="sr" data-cv></label>
@@ -1707,7 +1882,6 @@ function cvBody(st) {
 
 function githubBody(g = {}) {
   return `<form class="form" id="github-form" style="padding-top:14px">
-    <p class="small muted">Your public projects count as skills next to your CV. Each job shows which ones to mention.</p>
     <label class="field-label">GitHub name<input class="field" name="user" value="${esc(g.user || "")}" placeholder="github.com/yourname" autocapitalize="off" spellcheck="false"></label>
     <div class="row-actions">${g.user ? `<button class="btn btn-secondary" type="button" data-github-refresh>Read again${g.at ? `, last ${fmt(g.at)}` : ""}</button>` : ""}<button class="btn btn-primary" type="submit">Save</button></div></form>`;
 }
@@ -1727,8 +1901,7 @@ const LEVEL_NAMES = [["intern", "Internship or student job"], ["junior", "Junior
 function profileBody(st) {
   const p = st.profile || {};
   return `<form class="form" id="profile-form">
-    <label class="field-label">Job titles you want<input class="field" name="roles" value="${esc((p.roles || []).join(", "))}" placeholder="Data Scientist, Data Analyst" autocapitalize="words">
-      <span class="hint">Sift searches for these and scores every job against them.</span></label>
+    <label class="field-label">Job titles you want<input class="field" name="roles" value="${esc((p.roles || []).join(", "))}" placeholder="Data Scientist, Data Analyst" autocapitalize="words"></label>
     <fieldset class="checks-row"><legend>Level</legend>${LEVEL_NAMES.map(([k, l]) =>
       `<label class="check"><input type="checkbox" name="levels" value="${k}" ${p.levels?.includes(k) ? "checked" : ""}><span>${l}</span></label>`).join("")}</fieldset>
     <div class="grid-2">
@@ -1792,7 +1965,7 @@ function mailBody(st) {
   const m = st.mail || {}, last = m.last || {};
   const state_ = !m.ready ? "" : last.ok === false ? last.message : m.lastCheck ? `Connected, checked ${new Date(m.lastCheck).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : "Connected";
   return `<form class="form" id="mail-form">
-    <p class="small muted">Sift reads your job Gmail and tells you when a company answers. It only reads, it never sends or deletes.</p>
+    <p class="small muted">Sift only reads your mail. It never sends or deletes.</p>
     <label class="field-label">Gmail address<input class="field" type="email" name="mail_address" value="${esc(m.address || "")}" placeholder="you@gmail.com"></label>
     <label class="field-label">App password<input class="field" type="password" name="mail_password" autocomplete="new-password" placeholder="${m.ready ? "Saved" : "16 letters from Google"}"></label>
     <p class="hint">Not your normal password: make one at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:var(--accent)">myaccount.google.com/apppasswords</a>.</p>
@@ -1827,7 +2000,7 @@ async function uploadCv(e) {
     await loadStatus();
     toast(`CV saved. Score ${r.review.score}. Updated the fit of ${plural(r.rescored, "job")}.`);
     loadJobs();
-    if (state.screen === "docs" || state.screen === "you") await renderYouKeep("f-cv"); else renderJobs();
+    if (state.screen === "me" || state.screen === "you") await renderYouKeep("f-cv"); else renderJobs();
   } catch (ex) { toast(ex.message); }
 }
 
@@ -1900,11 +2073,12 @@ function bindYou() {
       try {
         const p = await api("/api/portfolio/refresh", { method: "POST" });
         loadJobs();
-        await renderPortfolio(p);
-        toast(`Read ${plural(p.github.repos.length, "GitHub project")} again and ran every check.${p.linkedin.has ? ` LinkedIn is from ${fmt(p.linkedin.at)}: upload its PDF to renew it.` : ""}`, { ms: 6000 });
+        await renderMe(p);
+        toast(`Read ${plural(p.github.repos.length, "GitHub project")} again.`);
       } catch (ex) { toast(ex.message, { ms: 6000 }); b.disabled = false; b.classList.remove("busy"); }
       setLive("");
     }
+    if (b.matches("[data-copy]")) { try { await navigator.clipboard.writeText(b.dataset.copy); toast("Copied"); } catch { toast("Copying is not allowed here."); } }
     if (b.matches("[data-copy-share]")) { try { await navigator.clipboard.writeText(b.dataset.copyShare); toast("Address copied"); } catch { toast("Select the address and copy it."); } }
   }, on);
   root.addEventListener("change", async e => {
@@ -1930,8 +2104,7 @@ function bindYou() {
 
 // Paint the screen you are on again after a save, with the same part open.
 async function renderYouKeep(openId) {
-  if (state.screen === "portfolio") return renderPortfolio();
-  if (state.screen === "docs") { await renderDocs(); $(`#${openId}`)?.setAttribute("open", ""); return; }
+  if (state.screen === "me") return renderMe();
   await renderYou(parseRoute().id ? openId.replace(/^f-/, "") : "", true);
 }
 

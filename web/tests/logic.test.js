@@ -122,7 +122,7 @@ test("summarize counts what needs attention", () => {
   assert.deepEqual(s, { toApply: 2, applied: 3, waiting: 2, due: 1 });
 });
 
-import { searchJobs, nextAction } from "../logic.js";
+import { searchJobs, nextAction, payPerYear } from "../logic.js";
 
 test("searchJobs puts company matches first and ignores accents", () => {
   const jobs = [
@@ -133,6 +133,14 @@ test("searchJobs puts company matches first and ignores accents", () => {
   assert.deepEqual(searchJobs(jobs, "data").map(j => j.id), ["c", "a", "b"]);
   assert.deepEqual(searchJobs(jobs, "societe").map(j => j.id), ["a"]);
   assert.deepEqual(searchJobs(jobs, "  "), []);
+});
+
+test("payPerYear reads the pay a posting states", () => {
+  assert.equal(payPerYear("€52,000 - 58,000 per year"), 52000);
+  assert.equal(payPerYear("€1,500 per month"), 18000);
+  assert.equal(payPerYear("45k"), 45000);
+  assert.equal(payPerYear("2.800 € brut mensuel"), 33600);
+  assert.equal(payPerYear(""), 0);
 });
 
 test("nextAction names the one thing to do", () => {

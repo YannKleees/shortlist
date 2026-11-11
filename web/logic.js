@@ -172,3 +172,14 @@ export function nextAction(job, today = todayISO()) {
   if (isWaiting(job)) return { text: "Waiting", tone: "" };
   return { text: job.status, tone: "" };
 }
+
+// The pay a posting states, as euros per year, or 0 when it cannot be told: "€52,000 - 58,000 per year", "€1,500 per month", "45k".
+export function payPerYear(text) {
+  const t = String(text || "").toLowerCase(), m = t.match(/(\d[\d.,\s]*\d|\d)\s?(k)?/);
+  if (!m) return 0;
+  let n = parseFloat(m[1].replace(/[.,\s](?=\d{3}(?!\d))/g, "").replace(",", ".")) * (m[2] ? 1000 : 1);
+  if (!(n > 0)) return 0;
+  if (/hour|heure|stunde|\/\s?h\b/.test(t)) n *= 1730;
+  else if (/month|mois|monat|mensuel/.test(t) || (n < 15000 && !/year|annum|an\b|jahr|annual/.test(t))) n *= 12;
+  return Math.round(n);
+}

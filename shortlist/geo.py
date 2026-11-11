@@ -27,7 +27,8 @@ class Geocoder:
         con.execute("CREATE TABLE IF NOT EXISTS places (query TEXT PRIMARY KEY, lat REAL, lon REAL)")
         con.commit()
 
-    def locate(self, place):
+    def locate(self, place, near=None):
+        """`near` is a point: a name without a country ("Belval") then means the place of that name nearest to it."""
         q = " ".join(str(place or "").split()).lower()
         if not q or any(w in q for w in REMOTE_WORDS):
             return None
@@ -43,26 +44,28 @@ class Geocoder:
         point = None
         for query, kind in tries:
             try:
-                hits = self._search(query, kind)
+                hits = self._search(query, kind, 8 if near and "," not in q else 1)
             except Exception:
                 return None  # offline: try again next time
             if hits:
-                point = (float(hits[0]["lat"]), float(hits[0]["lon"]))
+                spots = [(float(h["lat"]), float(h["lon"])) for h in hits]
+                point = min(spots, key=lambda s: haversine_km(near, s)) if near else spots[0]
                 break
         self.con.execute("INSERT OR REPLACE INTO places (query, lat, lon) VALUES (?, ?, ?)", (q, *(point or (None, None))))
         self.con.commit()
         return point
 
-    def _search(self, q, kind):
+    def _search(self, q, kind, limit=1):
         wait = self.pause - (time.monotonic() - self._last)  # Nominatim asks for at most one request per second
         if wait > 0:
             time.sleep(wait)
         self._last = time.monotonic()
-        params = {"q": q, "format": "json", "limit": 1, **({"featureType": kind} if kind else {})}
+        params = {"q": q, "format": "json", "limit": limit, **({"featureType": kind} if kind else {})}
         return self.get(NOMINATIM, params=params, headers=HEADERS, timeout=10).json()
 
     def distance_km(self, home, place):
-        a, b = self.locate(home), self.locate(place)
+        a = self.locate(home)
+        b = self.locate(place, near=a)
         return round(haversine_km(a, b)) if a and b else None
 
 

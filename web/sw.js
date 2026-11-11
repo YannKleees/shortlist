@@ -1,6 +1,6 @@
 // Sift service worker: notifications, and the app shell when the connection is weak.
 // Network first, so a new version arrives right away.
-const CACHE = "shortlist-v11";
+const CACHE = "shortlist-v19";
 const SHELL = ["/", "/app.css", "/app.js", "/logic.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon.svg", "/fonts/bricolage-latin.woff2", "/fonts/plex-mono-500.woff2", "/vendor/leaflet.js", "/vendor/leaflet.css"];
 
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));

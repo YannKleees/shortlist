@@ -79,6 +79,17 @@ def test_haversine_and_cached_geocoding(tmp_path):
     assert g.locate("Remote, Europe") is None and len(calls) == 4
 
 
+def test_a_bare_place_name_is_the_one_nearest_home(tmp_path):
+    from types import SimpleNamespace
+    found = {"luxembourg": [("49.6116", "6.1319")], "belval": [("49.2", "-1.1"), ("49.5", "5.95")]}
+
+    def get(url, params=None, **kw):
+        return SimpleNamespace(json=lambda: [{"lat": a, "lon": b} for a, b in found.get(params["q"], [])][:params["limit"]])
+
+    g = geo.Geocoder(sqlite3.connect(tmp_path / "g.db"), get=get, pause=0)
+    assert g.distance_km("Luxembourg", "Belval") < 30, "not the Belval in Normandy"
+
+
 def test_explain_says_why():
     r = {"seniority": "intern", "domain": "data_science", "work_setup": "Hybrid", "distance_km": 12, "sim": 0.4,
          "languages_required": ["English", "Dutch"], "location": "Luxembourg"}

@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import NAME, brief, cvparse, cvreview, db, discover, geo, github, ingest, letters, llm, mail, portfolio
-from .extract import rule_extract
+from .extract import hours_text, rule_extract
 from .push import Pusher
 from .score import SPOKEN
 from .scoring import score_job
@@ -36,6 +36,13 @@ COOKIE = "shortlist_session"
 # The kinds of notification a person can switch off: answers from companies, jobs somebody sent, jobs the search found,
 # the morning summary, and (for the people who help) the steps of the search.
 PUSH_KINDS = ("reply", "job", "find", "daily", "status")
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN", "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Robots-Tag": "noindex, nofollow",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                               "img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; font-src 'self'; "
+                               "frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
+}
 LOOKING_FOR = "Junior data science roles, internships or working student jobs, ideally hybrid."
 
 # What a helper (someone who sends you jobs) may do. Everything else under /api is for the owner.
@@ -212,6 +219,24 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
         response.set_cookie(COOKIE, db.new_session(con, uid), max_age=db.SESSION_DAYS * 86400, httponly=True,
                             samesite="lax", secure=secure(request), path="/")
 
+    def caller(request):
+        """Who is asking. Behind Tailscale Funnel or another proxy on this computer every request arrives from the
+        computer itself, and the proxy names the real sender in a header."""
+        ip = request.client.host if request.client else "?"
+        sent_for = request.headers.get("x-forwarded-for", "")
+        return sent_for.split(",")[0].strip() if ip in ("127.0.0.1", "::1") and sent_for else ip
+
+    @app.middleware("http")
+    async def harden(request: Request, call_next):
+        # The app can be on the open internet: no other site may frame it or load things into it, and no search
+        # engine should list it.
+        response = await call_next(request)
+        for k, v in SECURITY_HEADERS.items():
+            response.headers.setdefault(k, v)
+        if secure(request):
+            response.headers.setdefault("Strict-Transport-Security", "max-age=15552000")
+        return response
+
     @app.middleware("http")
     async def guard(request: Request, call_next):
         path, method = request.url.path, request.method
@@ -258,7 +283,7 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
 
     @app.post("/api/auth/login")
     def login(request: Request, response: Response, payload: dict = Body(...)):
-        ip = request.client.host if request.client else "?"
+        ip = caller(request)
         recent = [t for t in failed_logins.get(ip, []) if t > time.time() - 600]
         if len(recent) >= 10:
             raise HTTPException(429, "Too many tries. Wait ten minutes.")
@@ -564,7 +589,7 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
         home = places.locate(setting("home"))
         out = []
         for j in db.list_jobs(con):
-            spot = None if remote(j) else places.locate(j.get("location") or "")
+            spot = None if remote(j) else places.locate(j.get("location") or "", near=places.locate(setting("home")))
             if not spot:
                 continue
             car = roads.route(home, spot, "car") if home else None
@@ -575,7 +600,7 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
     @app.get("/api/jobs/{jid}/travel")
     def travel(jid: str):
         j = job_or_404(jid)
-        home, spot = places.locate(setting("home")), None if remote(j) else places.locate(j.get("location") or "")
+        home, spot = places.locate(setting("home")), None if remote(j) else places.locate(j.get("location") or "", near=places.locate(setting("home")))
         modes = {m: roads.route(home, spot, m) for m in geo.MODES} if home and spot else {}
         return {"home": point(setting("home")), "place": {"lat": spot[0], "lon": spot[1]} if spot else None,
                 "placeName": j.get("location") or "", "homeName": setting("home"), "remote": remote(j),
@@ -801,8 +826,9 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
 
     def find_api(f):
         d = {k: f[k] for k in ("id", "title", "company", "location", "link", "source", "posted", "score", "fit")}
-        d.update(read=bool(f["read"]), facts=_json(f["facts"], None), reasons=_json(f["reasons"], []), workSetup=f["work_setup"] or "",
-                 distanceKm=f["distance_km"])
+        facts = _json(f["facts"], None)
+        d.update(read=bool(f["read"]), facts=facts, reasons=_json(f["reasons"], []), workSetup=f["work_setup"] or "",
+                 distanceKm=f["distance_km"], **{k: (facts or {}).get(k) or "" for k in ("type", "hours", "salary")})
         return d
 
     def finds_api(**extra):
@@ -812,7 +838,9 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
 
     def score_find(f, text=""):
         s = scored({"company": f["company"], "role": f["title"], "location": f["location"], "posting_text": text})
-        return {"score": s["score"], "fit": s["fit"], "facts": s["facts"], "reasons": s["reasons"],
+        # What the filter on Find needs comes from the text too: the kind of job, the hours and the pay.
+        facts = {**json.loads(s["facts"]), "type": (s.get("type") or "") if text else "", "hours": hours_text(text), "salary": s.get("salary") or ""}
+        return {"score": s["score"], "fit": s["fit"], "facts": json.dumps(facts), "reasons": s["reasons"],
                 "work_setup": s.get("work_setup") or "", "distance_km": s.get("distance_km")}
 
     def find_or_404(fid):
@@ -1269,6 +1297,9 @@ def create_app(db_path="shortlist.db", fetch=ingest.fetch, llm_post=requests.pos
         return JSONResponse(body, headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     app.mount("/", NoCacheStatic(directory=WEB, html=True), name="web")
+    for f in finds.new():  # finds that were read before the filter existed get their kind, hours and pay now
+        if f["read"] and '"hours"' not in (f["facts"] or ""):
+            finds.update(f["id"], score_find(f, f["text"] or ""))
     return app
 
 

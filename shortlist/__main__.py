@@ -28,6 +28,7 @@ def main(argv=None):
     ap.add_argument("--no-backup", action="store_true", help="skip the daily copy of the database in backups/")
     ap.add_argument("--mail-every", type=int, default=int(os.environ.get("SHORTLIST_MAIL_MINUTES", "10")),
                     help="minutes between mail checks while the app runs, 0 to only check by hand")
+    ap.add_argument("--no-find", action="store_true", help="do not search the job sites by itself while the app runs")
     ap.add_argument("--sign-in-link", metavar="NAME", help="print a one time sign in link for this person, for example if you forgot your password")
     args = ap.parse_args(argv)
     if args.sign_in_link:
@@ -47,7 +48,7 @@ def main(argv=None):
         except Exception as e:  # a failed backup must never stop the app
             print(f"Backup skipped: {e}")
     app = create_app(args.db)
-    threading.Thread(target=watch, args=(app, args.mail_every), daemon=True).start()
+    threading.Thread(target=watch, args=(app, args.mail_every, not args.no_find), daemon=True).start()
     if not args.no_browser:
         webbrowser.open(url)
     # Behind a host such as Fly.io or a Tailscale/Cloudflare tunnel, trust its https headers so cookies are marked secure.
@@ -68,7 +69,7 @@ def print_sign_in_link(args):
     return 0
 
 
-def watch(app, minutes):
+def watch(app, minutes, find=True):
     # While the app runs: pick up jobs people mailed you and replies to your applications, and send the daily reminder.
     time.sleep(5)
     while True:
@@ -85,7 +86,7 @@ def watch(app, minutes):
         except Exception as e:
             print(f"Reminder failed: {e}")
         try:
-            if 8 <= time.localtime().tm_hour < 22:  # no phone buzzing at night
+            if find and 8 <= time.localtime().tm_hour < 22:  # no phone buzzing at night
                 good = app.state.find()
                 if good:
                     print(f"Find: {len(good)} new jobs that fit")

@@ -1,7 +1,7 @@
 [project]
 name = "shortlist"
-version = "3.0.0"
-description = "Personal job application tracker: save jobs from any link, follow up with companies and people, write letters with a local LLM."
+version = "4.0.0"
+description = "Sift: a job search app for you and your family. Find jobs, see how each one fits your CV, track applications and replies."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

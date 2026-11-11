@@ -156,7 +156,7 @@ def linkedin_review(text, link="", cv="", projects=(), profile=None, spoken=()):
     random_tail = re.search(r"-(?=[a-z0-9]*\d)[a-z0-9]{6,}$", slug.lower())
     best = [p["name"] for p in sorted(projects or [], key=lambda p: -sum(s in FIELDS for s in p.get("skills", [])))[:3]]
     checks = [
-        {"key": "headline", "label": "Headline", "ok": wants and len(head) >= 30,
+        {"key": "headline", "label": "Headline", "ok": wants and len(head) >= 30, "copy": example,
          "tip": f"Yours: \"{head}\". Name your field and the job you want, for example: \"{example}\"." if head
                 else "Start the text with your headline, the line under your name."},
         {"key": "about", "label": "About", "ok": about_words >= 40,
