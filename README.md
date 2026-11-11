@@ -1,5 +1,5 @@
 # Sift
-
+REMARK: Most of the things for this is vibe coded because this is for personal use i want to actually use this to find the jobs that fit best for myself
 Sift used to be called Shortlist: the repository, the Python package and the database file keep that name.
 
 A job search app for you and the people who help you. Paste a link from LinkedIn, Indeed or any site, and Sift reads the posting and tells you how well it fits: the field, the level, the work setup, the distance from home, the languages, what you already have and what you would still need. It checks your CV, writes motivation letters, watches your job inbox for replies, and sends a notification to your phone when a company answers.
